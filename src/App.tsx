@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react'
+import { Route, Routes } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
+import { AppShell } from './components/AppShell'
+import { Home } from './pages/Home'
+import { JobDetail } from './pages/JobDetail'
+import { ComingSoon } from './pages/ComingSoon'
 import './App.css'
 
 function App() {
@@ -24,10 +29,13 @@ function App() {
 
   if (!session) {
     return (
-      <section id="login">
+      <section className="login">
+        <img src="/grindstone-logo.png" alt="Grindstone Concrete" className="login-logo brand-logo" />
         <h1>Grindstone Dashboard</h1>
+        <p className="login-sub">Job tracking, billing &amp; estimating — one place.</p>
         <button
           type="button"
+          className="btn-primary"
           onClick={() =>
             supabase.auth.signInWithOAuth({
               provider: 'google',
@@ -42,16 +50,17 @@ function App() {
   }
 
   return (
-    <section id="dashboard">
-      <header>
-        <h1>Grindstone Dashboard</h1>
-        <button type="button" onClick={() => supabase.auth.signOut()}>
-          Sign out
-        </button>
-      </header>
-      <p>Signed in as {session.user.email}</p>
-      <p>Home dashboard coming next.</p>
-    </section>
+    <AppShell email={session.user.email ?? ''}>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/jobs/:id" element={<JobDetail />} />
+        <Route path="/schedule" element={<ComingSoon title="Schedule" phase={4} />} />
+        <Route path="/billing" element={<ComingSoon title="Billing" phase={2} />} />
+        <Route path="/estimating" element={<ComingSoon title="Estimating" phase={3} />} />
+        <Route path="/price-sheet" element={<ComingSoon title="Price Sheet" phase={3} />} />
+        <Route path="*" element={<Home />} />
+      </Routes>
+    </AppShell>
   )
 }
 
