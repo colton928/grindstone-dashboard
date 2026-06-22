@@ -391,6 +391,189 @@
   flex-wrap: wrap;
 }
 
+.line-logs {
+  align-self: flex-start;
+  color: var(--text-soft);
+  font-size: 12px;
+}
+.line-logs:hover {
+  color: var(--accent);
+}
+
+/* ───────────────────────── Daily Log: filters ───────────────────────── */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+.filter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 140px;
+  min-width: 120px;
+}
+.filter > .label {
+  font-size: 11px;
+}
+.filter select,
+.filter input,
+.filter textarea {
+  background: var(--surface-2);
+  color: var(--text-h);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 14px;
+  font-family: inherit;
+  width: 100%;
+}
+.filter select:focus,
+.filter input:focus,
+.filter textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.filter-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.filter-check input {
+  width: auto;
+}
+.filter-clear {
+  flex: 0 0 auto;
+}
+
+/* ───────────────────────── Daily Log: cards ───────────────────────── */
+.logcard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.logcard-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+.logcard-date {
+  font-family: var(--heading);
+  font-weight: 600;
+  color: var(--accent);
+  margin-right: 10px;
+}
+.logcard-job {
+  font-weight: 600;
+  color: var(--text-h);
+}
+.logcard-meta {
+  display: block;
+  margin-top: 2px;
+}
+.logitems {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.logitem {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+.logitem-hit {
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-weight: 600;
+}
+.logcard-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: center;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+.lognote {
+  font-style: italic;
+}
+
+/* ───────────────────────── Daily Log: editor ───────────────────────── */
+.logcard-editing {
+  border-color: var(--accent);
+}
+.edit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+@media (min-width: 560px) {
+  .edit-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+.edit-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.edit-item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.edit-item select {
+  flex: 1;
+  background: var(--surface-2);
+  color: var(--text-h);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 14px;
+}
+.edit-qty {
+  width: 96px;
+  background: var(--surface-2);
+  color: var(--text-h);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 14px;
+}
+.edit-rm {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+}
+.edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.edit-delete {
+  margin-left: auto;
+  color: #c0392b;
+  border-color: #c0392b55;
+}
+.edit-delete:hover {
+  color: #fff;
+  background: #c0392b;
+}
+
 /* ───────────────────────── Empty / coming soon ───────────────────────── */
 .empty-card {
   background: var(--surface);

@@ -99,6 +99,14 @@ export function JobDetail() {
                   </span>
                   <span className="num">@ {formatMoney(line.rate)}</span>
                 </div>
+                {line.productId && (
+                  <Link
+                    to={`/daily-log?job=${id}&product=${line.productId}`}
+                    className="line-logs label"
+                  >
+                    View daily logs →
+                  </Link>
+                )}
               </div>
             ))}
           </div>
@@ -124,6 +132,12 @@ export function JobDetail() {
                     {ex.unit ? ` ${ex.unit}` : ''}
                   </span>
                 </div>
+                <Link
+                  to={`/daily-log?job=${id}&product=${ex.productId}`}
+                  className="line-logs label"
+                >
+                  View daily logs →
+                </Link>
               </div>
             ))}
           </div>

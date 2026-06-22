@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 
 const TABS = [
   { to: '/', label: 'Home', end: true },
+  { to: '/daily-log', label: 'Logs', end: false },
   { to: '/schedule', label: 'Schedule', end: false },
   { to: '/billing', label: 'Billing', end: false },
   { to: '/estimating', label: 'Estimate', end: false },

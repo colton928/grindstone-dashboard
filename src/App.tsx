@@ -5,6 +5,7 @@ import { supabase } from './lib/supabase'
 import { AppShell } from './components/AppShell'
 import { Home } from './pages/Home'
 import { JobDetail } from './pages/JobDetail'
+import { DailyLog } from './pages/DailyLog'
 import { ComingSoon } from './pages/ComingSoon'
 import './App.css'
 
@@ -54,6 +55,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/jobs/:id" element={<JobDetail />} />
+        <Route path="/daily-log" element={<DailyLog />} />
         <Route path="/schedule" element={<ComingSoon title="Schedule" phase={4} />} />
         <Route path="/billing" element={<ComingSoon title="Billing" phase={2} />} />
         <Route path="/estimating" element={<ComingSoon title="Estimating" phase={3} />} />

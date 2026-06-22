@@ -1,6 +1,8 @@
 import { supabase } from './supabase'
 import type {
+  Client,
   DailyLog,
+  DailyLogFull,
   DailyLogItem,
   Estimate,
   EstimateLineItem,
@@ -90,4 +92,67 @@ export async function fetchJobLoggedItems(
   if (itemErr) throw itemErr
 
   return { logs: logList, items: (items ?? []) as DailyLogItem[] }
+}
+
+// ─────────────────────── Daily Log tab (Phase 1.5) ───────────────────────
+
+export async function fetchClients(): Promise<Client[]> {
+  const { data, error } = await supabase.from('clients').select('*').order('name')
+  if (error) throw error
+  return (data ?? []) as Client[]
+}
+
+// Every daily report with its job/client and line items, newest first.
+export async function fetchAllDailyLogs(): Promise<DailyLogFull[]> {
+  const { data, error } = await supabase
+    .from('daily_logs')
+    .select(
+      '*, job:jobs(id, name, client:clients(id, name)), items:daily_log_items(*)',
+    )
+    .order('log_date', { ascending: false })
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []) as DailyLogFull[]
+}
+
+export type DailyLogPatch = Partial<
+  Pick<
+    DailyLog,
+    'log_date' | 'submitted_by' | 'concrete_yards' | 'notes' | 'issues_delays' | 'ready_to_bill'
+  >
+>
+
+export async function updateDailyLog(id: string, patch: DailyLogPatch): Promise<void> {
+  const { error } = await supabase.from('daily_logs').update(patch).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteDailyLog(id: string): Promise<void> {
+  // daily_log_items cascade on delete (FK on delete cascade).
+  const { error } = await supabase.from('daily_logs').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function updateDailyLogItem(
+  id: string,
+  patch: { product_id?: string | null; quantity?: number },
+): Promise<void> {
+  const { error } = await supabase.from('daily_log_items').update(patch).eq('id', id)
+  if (error) throw error
+}
+
+export async function addDailyLogItem(
+  daily_log_id: string,
+  product_id: string | null,
+  quantity: number,
+): Promise<void> {
+  const { error } = await supabase
+    .from('daily_log_items')
+    .insert({ daily_log_id, product_id, quantity })
+  if (error) throw error
+}
+
+export async function deleteDailyLogItem(id: string): Promise<void> {
+  const { error } = await supabase.from('daily_log_items').delete().eq('id', id)
+  if (error) throw error
 }

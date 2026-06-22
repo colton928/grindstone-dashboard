@@ -69,7 +69,9 @@ export interface DailyLog {
   submitted_by: string | null
   concrete_yards: number | null
   notes: string | null
+  issues_delays: string | null
   ready_to_bill: boolean
+  created_at?: string
 }
 
 export interface DailyLogItem {
@@ -77,4 +79,15 @@ export interface DailyLogItem {
   daily_log_id: string
   product_id: string | null
   quantity: number
+  sort_order?: number | null
+}
+
+// A daily log with its job/client and its line items, for the Daily Log tab.
+export interface DailyLogFull extends DailyLog {
+  job: {
+    id: string
+    name: string
+    client: Pick<Client, 'id' | 'name'> | null
+  } | null
+  items: DailyLogItem[]
 }
