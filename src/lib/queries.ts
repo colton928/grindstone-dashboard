@@ -133,6 +133,27 @@ export async function updateDailyLog(id: string, patch: DailyLogPatch): Promise<
   if (error) throw error
 }
 
+// Mark a daily report reviewed (clears the needs-review flag) or re-open it.
+export async function setDailyLogReviewed(id: string, reviewed: boolean): Promise<void> {
+  const { error } = await supabase
+    .from('daily_logs')
+    .update({ reviewed_at: reviewed ? new Date().toISOString() : null })
+    .eq('id', id)
+  if (error) throw error
+}
+
+// Count of reports that need review: have a note or issue and aren't reviewed.
+// Powers the badge on the Logs tab.
+export async function countDailyLogsNeedingReview(): Promise<number> {
+  const { count, error } = await supabase
+    .from('daily_logs')
+    .select('id', { count: 'exact', head: true })
+    .is('reviewed_at', null)
+    .or('notes.not.is.null,issues_delays.not.is.null')
+  if (error) throw error
+  return count ?? 0
+}
+
 export async function deleteDailyLog(id: string): Promise<void> {
   // daily_log_items cascade on delete (FK on delete cascade).
   const { error } = await supabase.from('daily_logs').delete().eq('id', id)

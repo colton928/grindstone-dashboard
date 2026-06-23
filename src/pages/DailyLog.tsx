@@ -7,6 +7,7 @@ import {
   fetchAllDailyLogs,
   fetchClients,
   fetchPriceList,
+  setDailyLogReviewed,
   updateDailyLog,
   updateDailyLogItem,
 } from '../lib/queries'
@@ -14,6 +15,10 @@ import { formatDate, formatQty } from '../lib/progress'
 import type { Client, DailyLogFull, PriceListItem } from '../lib/types'
 
 const d10 = (s: string | null | undefined) => (s ? s.slice(0, 10) : '')
+
+// A report needs review when it carries a note or issue and hasn't been cleared.
+const needsReview = (l: DailyLogFull): boolean =>
+  !l.reviewed_at && !!((l.notes && l.notes.trim()) || (l.issues_delays && l.issues_delays.trim()))
 
 export function DailyLog() {
   const [params, setParams] = useSearchParams()
@@ -30,6 +35,7 @@ export function DailyLog() {
   const fProduct = params.get('product') ?? ''
   const fFrom = params.get('from') ?? ''
   const fTo = params.get('to') ?? ''
+  const fReview = params.get('review') === '1'
 
   const setFilter = (key: string, value: string) => {
     const next = new URLSearchParams(params)
@@ -78,8 +84,11 @@ export function DailyLog() {
     return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1]))
   }, [logs])
 
+  const reviewCount = useMemo(() => logs.filter(needsReview).length, [logs])
+
   const filtered = useMemo(() => {
     return logs.filter((l) => {
+      if (fReview && !needsReview(l)) return false
       if (fJob && l.job?.id !== fJob) return false
       if (fClient && l.job?.client?.id !== fClient) return false
       if (fFrom && d10(l.log_date) < fFrom) return false
@@ -87,9 +96,15 @@ export function DailyLog() {
       if (fProduct && !l.items.some((it) => it.product_id === fProduct)) return false
       return true
     })
-  }, [logs, fJob, fClient, fFrom, fTo, fProduct])
+  }, [logs, fReview, fJob, fClient, fFrom, fTo, fProduct])
 
-  const hasFilter = !!(fJob || fClient || fProduct || fFrom || fTo)
+  const hasFilter = !!(fJob || fClient || fProduct || fFrom || fTo || fReview)
+
+  async function markReviewed(id: string, reviewed: boolean) {
+    await setDailyLogReviewed(id, reviewed)
+    window.dispatchEvent(new Event('logs-reviewed')) // refresh the tab badge
+    await load()
+  }
 
   if (loading) return <div className="page"><p className="muted">Loading daily logs…</p></div>
   if (error) return <div className="page"><p className="error-text">{error}</p></div>
@@ -103,6 +118,21 @@ export function DailyLog() {
           {hasFilter ? ' · filtered' : ''}
         </p>
       </div>
+
+      {reviewCount > 0 && (
+        <button
+          type="button"
+          className={`review-banner${fReview ? ' review-banner-active' : ''}`}
+          onClick={() => setFilter('review', fReview ? '' : '1')}
+        >
+          <span className="review-banner-icon">⚠</span>
+          <span>
+            <strong>{reviewCount}</strong> report{reviewCount === 1 ? '' : 's'} need review
+            <span className="label"> — a note or issue was logged</span>
+          </span>
+          <span className="label review-banner-cta">{fReview ? 'Show all' : 'Review →'}</span>
+        </button>
+      )}
 
       <div className="filters">
         <label className="filter">
@@ -166,10 +196,11 @@ export function DailyLog() {
                 }}
               />
             ) : (
-              <article key={log.id} className="logcard">
+              <article key={log.id} className={`logcard${needsReview(log) ? ' logcard-review' : ''}`}>
                 <div className="logcard-head">
                   <div>
                     <span className="logcard-date num">{formatDate(log.log_date)}</span>
+                    {needsReview(log) && <span className="pill pill-review">Needs review</span>}
                     <span className="logcard-job">
                       {log.job ? (
                         <Link to={`/jobs/${log.job.id}`}>{log.job.name}</Link>
@@ -182,13 +213,32 @@ export function DailyLog() {
                       {log.submitted_by ? ` · ${log.submitted_by}` : ''}
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    className="btn-ghost"
-                    onClick={() => setEditingId(log.id)}
-                  >
-                    Edit
-                  </button>
+                  <div className="logcard-head-actions">
+                    {needsReview(log) ? (
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        onClick={() => void markReviewed(log.id, true)}
+                      >
+                        ✓ Mark reviewed
+                      </button>
+                    ) : log.reviewed_at && ((log.notes && log.notes.trim()) || (log.issues_delays && log.issues_delays.trim())) ? (
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        onClick={() => void markReviewed(log.id, false)}
+                      >
+                        Re-flag
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      onClick={() => setEditingId(log.id)}
+                    >
+                      Edit
+                    </button>
+                  </div>
                 </div>
 
                 <div className="logitems">

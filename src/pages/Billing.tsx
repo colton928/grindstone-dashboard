@@ -53,6 +53,7 @@ export function Billing() {
   // billing detail with the draft already open in the editor.
   const [editInvoiceId, setEditInvoiceId] = useState<string | null>(null)
   const [clientFilter, setClientFilter] = useState<string>('') // '' = all clients
+  const [search, setSearch] = useState('')
 
   async function load() {
     try {
@@ -137,10 +138,12 @@ export function Billing() {
   // work is unpriced ($0 rate), so jobs like Havenwood (all logged as "Other")
   // still surface and can be billed manually. Archived jobs are hidden.
   const clientNames = [...new Set(data.jobs.map((j) => j.client?.name).filter(Boolean))].sort() as string[]
+  const q = search.trim().toLowerCase()
   const jobsNeeding = data.jobs
     .filter((j) => j.status !== 'archived')
     .filter((j) => (billingByJob.get(j.id)?.hasUnbilledQty ?? false))
     .filter((j) => !clientFilter || j.client?.name === clientFilter)
+    .filter((j) => !q || j.name.toLowerCase().includes(q) || (j.client?.name ?? '').toLowerCase().includes(q))
     .sort(
       (a, b) =>
         (billingByJob.get(b.id)?.remainingValue ?? 0) -
@@ -185,17 +188,28 @@ export function Billing() {
 
       <div className="bill-overview-head">
         <h2>Ready to bill</h2>
-        {clientNames.length > 1 && (
+        <div className="est-filters">
           <label className="filter">
-            <span className="label">Client</span>
-            <select value={clientFilter} onChange={(e) => setClientFilter(e.target.value)}>
-              <option value="">All clients</option>
-              {clientNames.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
+            <span className="label">Search</span>
+            <input
+              type="search"
+              placeholder="Job or client…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </label>
-        )}
+          {clientNames.length > 1 && (
+            <label className="filter">
+              <span className="label">Client</span>
+              <select value={clientFilter} onChange={(e) => setClientFilter(e.target.value)}>
+                <option value="">All clients</option>
+                {clientNames.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
       </div>
       {jobsNeeding.length === 0 ? (
         <div className="empty-card"><p className="label">Nothing outstanding — all logged work is billed.</p></div>
@@ -227,11 +241,21 @@ export function Billing() {
       )}
 
       <h2>Invoice history</h2>
-      {invoices.length === 0 ? (
+      {(() => {
+        const shown = invoices.filter(
+          (inv) =>
+            !q ||
+            (inv.job?.name ?? '').toLowerCase().includes(q) ||
+            (inv.job?.client?.name ?? '').toLowerCase().includes(q) ||
+            (inv.bill_number ?? '').toLowerCase().includes(q),
+        )
+        return invoices.length === 0 ? (
         <div className="empty-card"><p className="label">No invoices yet.</p></div>
+      ) : shown.length === 0 ? (
+        <div className="empty-card"><p className="label">No invoices match “{search}”.</p></div>
       ) : (
         <div className="lines">
-          {invoices.map((inv) => {
+          {shown.map((inv) => {
             const total = inv.lines.reduce(
               (s, l) => s + (l.amount != null ? Number(l.amount) : Number(l.quantity) * Number(l.rate)),
               0,
@@ -298,7 +322,8 @@ export function Billing() {
             )
           })}
         </div>
-      )}
+      )
+      })()}
     </div>
   )
 }

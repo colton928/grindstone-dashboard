@@ -641,6 +641,62 @@
   border: 1px dashed var(--border-strong);
   opacity: 0.8;
 }
+.pill-review {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+/* ── Needs-review flag (Daily Log) ── */
+.review-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  border-radius: 10px;
+  background: var(--accent-bg);
+  border: 1px solid var(--accent);
+  color: var(--text-h);
+  cursor: pointer;
+}
+.review-banner-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+.review-banner-cta {
+  margin-left: auto;
+  white-space: nowrap;
+  color: var(--accent);
+  font-weight: 700;
+}
+.review-banner-active {
+  outline: 2px solid var(--accent);
+}
+.logcard-review {
+  border-left: 3px solid var(--accent);
+}
+.logcard-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  margin-left: 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  vertical-align: top;
+}
 
 /* Section header with an inline filter control (Billing/Estimating overviews). */
 .bill-overview-head {

@@ -56,6 +56,7 @@ export function Estimating() {
   const [creating, setCreating] = useState(false)
   const [clientFilter, setClientFilter] = useState<string>('') // '' = all clients
   const [showArchived, setShowArchived] = useState(false)
+  const [search, setSearch] = useState('')
 
   async function load() {
     try {
@@ -108,9 +109,17 @@ export function Estimating() {
 
   // Visible list: hide archived unless toggled on, apply the client filter, and
   // sort by client then job so bids group together (43+ estimates now).
+  const q = search.trim().toLowerCase()
   const visible = estimates
     .filter((e) => (showArchived ? e.status === 'archived' : e.status !== 'archived'))
     .filter((e) => !clientFilter || e.job?.client?.name === clientFilter)
+    .filter(
+      (e) =>
+        !q ||
+        (e.job?.name ?? '').toLowerCase().includes(q) ||
+        (e.job?.client?.name ?? '').toLowerCase().includes(q) ||
+        String(e.estimate_number ?? '').toLowerCase().includes(q),
+    )
     .sort(
       (a, b) =>
         (a.job?.client?.name ?? '').localeCompare(b.job?.client?.name ?? '') ||
@@ -158,6 +167,15 @@ export function Estimating() {
       <div className="bill-overview-head">
         <h2>{showArchived ? 'Archived bids' : 'Estimate history'}</h2>
         <div className="est-filters">
+          <label className="filter">
+            <span className="label">Search</span>
+            <input
+              type="search"
+              placeholder="Job, client, est #…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </label>
           {clientNames.length > 1 && (
             <label className="filter">
               <span className="label">Client</span>
