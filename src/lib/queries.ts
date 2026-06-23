@@ -1,11 +1,14 @@
 import { supabase } from './supabase'
 import type {
   Client,
+  ClientPriceRule,
   DailyLog,
   DailyLogFull,
   DailyLogItem,
   Estimate,
+  EstimateFull,
   EstimateLineItem,
+  EstimateStatus,
   InvoiceFull,
   InvoiceStatus,
   JobWithClient,
@@ -272,5 +275,110 @@ export async function updateInvoice(
 export async function deleteInvoice(id: string): Promise<void> {
   // invoice_line_items cascade on delete.
   const { error } = await supabase.from('invoices').delete().eq('id', id)
+  if (error) throw error
+}
+
+// ─────────────────────── Estimating tab (Phase 3) ───────────────────────
+
+// All jobs (any status) — estimates/bids can be for jobs not yet active.
+export async function fetchAllJobs(): Promise<JobWithClient[]> {
+  const { data, error } = await supabase
+    .from('jobs')
+    .select('*, client:clients(id, name)')
+    .order('name')
+  if (error) throw error
+  return (data ?? []) as JobWithClient[]
+}
+
+export async function fetchClientPriceRules(): Promise<ClientPriceRule[]> {
+  const { data, error } = await supabase.from('client_price_rules').select('*')
+  if (error) throw error
+  return (data ?? []) as ClientPriceRule[]
+}
+
+// Every estimate with its job/client and line items, newest first.
+export async function fetchAllEstimates(): Promise<EstimateFull[]> {
+  const { data, error } = await supabase
+    .from('estimates')
+    .select(
+      '*, job:jobs(id, name, client:clients(id, name)), lines:estimate_line_items(*)',
+    )
+    .order('estimate_date', { ascending: false })
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []) as EstimateFull[]
+}
+
+export interface NewEstimateLine {
+  product_id: string | null
+  description: string | null
+  unit: string | null
+  quantity: number
+  rate: number
+  adjustment_note: string | null
+  sort_order: number
+}
+
+export async function createEstimate(
+  estimate: {
+    job_id: string
+    estimate_number: string | null
+    estimate_date: string | null
+    status: EstimateStatus
+    notes: string | null
+  },
+  lines: NewEstimateLine[],
+): Promise<string> {
+  const { data, error } = await supabase.from('estimates').insert(estimate).select('id').single()
+  if (error) throw error
+  const estimateId = data.id as string
+  if (lines.length) {
+    const rows = lines.map((l) => ({
+      estimate_id: estimateId,
+      product_id: l.product_id,
+      description: l.description,
+      unit: l.unit,
+      quantity: l.quantity,
+      rate: l.rate,
+      // amount is a generated column (quantity * rate) — Postgres computes it, don't insert.
+      adjustment_note: l.adjustment_note,
+      sort_order: l.sort_order,
+    }))
+    const { error: lineErr } = await supabase.from('estimate_line_items').insert(rows)
+    if (lineErr) throw lineErr
+  }
+  return estimateId
+}
+
+export async function updateEstimateStatus(id: string, status: EstimateStatus): Promise<void> {
+  const { error } = await supabase.from('estimates').update({ status }).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteEstimate(id: string): Promise<void> {
+  // estimate_line_items cascade on delete.
+  const { error } = await supabase.from('estimates').delete().eq('id', id)
+  if (error) throw error
+}
+
+// ─────────────────────── Price Sheet tab (Phase 3) ───────────────────────
+
+export async function addPriceItem(
+  item: { name: string; category: string | null; unit: string; default_rate: number },
+): Promise<PriceListItem> {
+  const { data, error } = await supabase.from('price_list').insert(item).select('*').single()
+  if (error) throw error
+  return data as PriceListItem
+}
+
+export type PriceItemPatch = Partial<
+  Pick<PriceListItem, 'name' | 'category' | 'unit' | 'default_rate' | 'active'>
+>
+
+export async function updatePriceItem(id: string, patch: PriceItemPatch): Promise<void> {
+  const { error } = await supabase
+    .from('price_list')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('id', id)
   if (error) throw error
 }

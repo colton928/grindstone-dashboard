@@ -7,6 +7,8 @@ import { Home } from './pages/Home'
 import { JobDetail } from './pages/JobDetail'
 import { DailyLog } from './pages/DailyLog'
 import { Billing } from './pages/Billing'
+import { Estimating } from './pages/Estimating'
+import { PriceSheet } from './pages/PriceSheet'
 import { ComingSoon } from './pages/ComingSoon'
 import './App.css'
 
@@ -59,8 +61,8 @@ function App() {
         <Route path="/daily-log" element={<DailyLog />} />
         <Route path="/schedule" element={<ComingSoon title="Schedule" phase={4} />} />
         <Route path="/billing" element={<Billing />} />
-        <Route path="/estimating" element={<ComingSoon title="Estimating" phase={3} />} />
-        <Route path="/price-sheet" element={<ComingSoon title="Price Sheet" phase={3} />} />
+        <Route path="/estimating" element={<Estimating />} />
+        <Route path="/price-sheet" element={<PriceSheet />} />
         <Route path="*" element={<Home />} />
       </Routes>
     </AppShell>

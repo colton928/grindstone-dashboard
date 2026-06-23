@@ -695,6 +695,30 @@
   color: var(--text-h);
 }
 
+/* ───────────────────────── Estimating / Price Sheet (Phase 3) ───────────────────────── */
+.bill-action-row {
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.price-toggle {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+.price-toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+.est-adj {
+  color: var(--accent);
+  font-size: 12px;
+}
+.line-inactive {
+  opacity: 0.55;
+}
+
 /* ───────────────────────── Empty / coming soon ───────────────────────── */
 .empty-card {
   background: var(--surface);

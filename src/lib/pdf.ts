@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import type { InvoiceFull } from './types'
+import type { EstimateFull, InvoiceFull } from './types'
 
 const money = (n: number) =>
   n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 })
@@ -112,7 +112,112 @@ export async function shareInvoicePdf(
   productName: Map<string, string>,
 ): Promise<void> {
   const doc = buildInvoicePdf(invoice, productName)
-  const fname = invoiceFileName(invoice)
+  await shareOrSave(doc, invoiceFileName(invoice))
+}
+
+// ─────────────────────── Estimate PDF ───────────────────────
+
+// Builds a clean one-page estimate PDF and returns the jsPDF doc. Mirrors the
+// invoice layout; header says ESTIMATE and shows the estimate # / date.
+export function buildEstimatePdf(
+  estimate: EstimateFull,
+  productName: Map<string, string>,
+): jsPDF {
+  const doc = new jsPDF({ unit: 'pt', format: 'letter' })
+  const pageW = doc.internal.pageSize.getWidth()
+  const M = 48
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(20)
+  doc.text('GRINDSTONE CONCRETE', M, 56)
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(22)
+  doc.text('ESTIMATE', pageW - M, 56, { align: 'right' })
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(10)
+  if (estimate.estimate_number)
+    doc.text(`Estimate #${estimate.estimate_number}`, pageW - M, 72, { align: 'right' })
+  if (estimate.estimate_date)
+    doc.text(estimate.estimate_date.slice(0, 10), pageW - M, 86, { align: 'right' })
+
+  let y = 118
+  doc.setFontSize(9)
+  doc.setTextColor(120)
+  doc.text('JOB', M, y)
+  doc.text('CLIENT', pageW / 2, y)
+  y += 14
+  doc.setTextColor(20)
+  doc.setFontSize(12)
+  doc.setFont('helvetica', 'bold')
+  doc.text(estimate.job?.name ?? '—', M, y)
+  doc.text(estimate.job?.client?.name ?? '—', pageW / 2, y)
+  doc.setFont('helvetica', 'normal')
+
+  const body = [...estimate.lines]
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    .map((l) => {
+      const amt = l.amount != null ? Number(l.amount) : Number(l.quantity) * Number(l.rate)
+      const desc = l.description ?? (l.product_id ? productName.get(l.product_id) : null) ?? 'Work'
+      return [desc, l.unit ?? '', qtyFmt(Number(l.quantity)), money(Number(l.rate)), money(amt)]
+    })
+
+  const total = estimate.lines.reduce(
+    (s, l) => s + (l.amount != null ? Number(l.amount) : Number(l.quantity) * Number(l.rate)),
+    0,
+  )
+
+  autoTable(doc, {
+    startY: y + 22,
+    head: [['Description', 'Unit', 'Qty', 'Rate', 'Amount']],
+    body,
+    foot: [['', '', '', 'Total', money(total)]],
+    theme: 'striped',
+    headStyles: { fillColor: [26, 26, 28], textColor: 255, fontStyle: 'bold' },
+    footStyles: { fillColor: [240, 240, 240], textColor: 20, fontStyle: 'bold' },
+    styles: { fontSize: 10, cellPadding: 6 },
+    columnStyles: {
+      1: { halign: 'center', cellWidth: 50 },
+      2: { halign: 'right', cellWidth: 70 },
+      3: { halign: 'right', cellWidth: 80 },
+      4: { halign: 'right', cellWidth: 90 },
+    },
+    margin: { left: M, right: M },
+  })
+
+  if (estimate.notes) {
+    const afterY = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 24
+    doc.setFontSize(9)
+    doc.setTextColor(120)
+    doc.text('NOTES', M, afterY)
+    doc.setTextColor(40)
+    doc.setFontSize(10)
+    doc.text(doc.splitTextToSize(estimate.notes, pageW - M * 2), M, afterY + 14)
+  }
+
+  return doc
+}
+
+export function estimateFileName(estimate: EstimateFull): string {
+  const job = (estimate.job?.name ?? 'estimate').replace(/[^a-z0-9]+/gi, '_').replace(/^_|_$/g, '')
+  const num = estimate.estimate_number ? `_Est${estimate.estimate_number}` : '_Estimate'
+  return `${job}${num}.pdf`
+}
+
+export function downloadEstimatePdf(estimate: EstimateFull, productName: Map<string, string>): void {
+  buildEstimatePdf(estimate, productName).save(estimateFileName(estimate))
+}
+
+export async function shareEstimatePdf(
+  estimate: EstimateFull,
+  productName: Map<string, string>,
+): Promise<void> {
+  const doc = buildEstimatePdf(estimate, productName)
+  await shareOrSave(doc, estimateFileName(estimate))
+}
+
+// Opens the native share sheet with the PDF attached, falling back to download.
+async function shareOrSave(doc: jsPDF, fname: string): Promise<void> {
   try {
     const file = new File([doc.output('blob')], fname, { type: 'application/pdf' })
     const nav = navigator as Navigator & { canShare?: (d: { files: File[] }) => boolean }

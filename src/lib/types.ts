@@ -38,7 +38,9 @@ export interface JobWithClient extends Job {
   client: Pick<Client, 'id' | 'name'> | null
 }
 
-export type EstimateStatus = 'draft' | 'sent' | 'approved' | 'lost'
+// Locked decision (context.md): estimates track only draft / sent-to-Michelle,
+// mirroring invoices. No "approved"/"lost" — Michelle/QuickBooks owns the rest.
+export type EstimateStatus = 'draft' | 'sent_to_michelle'
 
 export interface Estimate {
   id: string
@@ -47,6 +49,16 @@ export interface Estimate {
   estimate_date: string
   status: EstimateStatus
   notes: string | null
+  created_at?: string
+}
+
+export interface ClientPriceRule {
+  id: string
+  client_id: string
+  category: string
+  adjust_amount: number
+  note: string | null
+  active: boolean
 }
 
 export interface EstimateLineItem {
@@ -124,4 +136,14 @@ export interface InvoiceFull extends Invoice {
     client: Pick<Client, 'id' | 'name'> | null
   } | null
   lines: InvoiceLineItem[]
+}
+
+// An estimate with its job/client and line items, for the Estimating tab.
+export interface EstimateFull extends Estimate {
+  job: {
+    id: string
+    name: string
+    client: Pick<Client, 'id' | 'name'> | null
+  } | null
+  lines: EstimateLineItem[]
 }
