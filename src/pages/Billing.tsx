@@ -5,12 +5,14 @@ import {
   fetchAllInvoices,
   fetchBillingData,
   fetchPriceList,
+  replaceInvoiceLines,
+  updateInvoice,
   updateInvoiceStatus,
   type BillingRawData,
   type NewInvoiceLine,
 } from '../lib/queries'
 import { computeJobBilling, type JobBilling } from '../lib/billing'
-import { formatMoney, formatQty } from '../lib/progress'
+import { formatDate, formatMoney, formatQty } from '../lib/progress'
 import type {
   InvoiceFull,
   InvoiceStatus,
@@ -19,13 +21,18 @@ import type {
 } from '../lib/types'
 
 const today = () => new Date().toISOString().slice(0, 10)
-const d10 = (s: string | null | undefined) => (s ? s.slice(0, 10) : '')
 
 // Lazy-load jsPDF (~450KB) only when a PDF is actually generated, then open the
 // native share sheet (falls back to download).
 async function sharePdf(invoice: InvoiceFull, productName: Map<string, string>) {
   const { shareInvoicePdf } = await import('../lib/pdf')
   await shareInvoicePdf(invoice, productName)
+}
+
+// Quick view — open the invoice PDF in a new tab to look at it.
+async function viewPdf(invoice: InvoiceFull, productName: Map<string, string>) {
+  const { viewInvoicePdf } = await import('../lib/pdf')
+  viewInvoicePdf(invoice, productName)
 }
 
 function errMsg(e: unknown): string {
@@ -41,6 +48,9 @@ export function Billing() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
+  // When the user hits "Edit" on a draft from the overview, jump to that job's
+  // billing detail with the draft already open in the editor.
+  const [editInvoiceId, setEditInvoiceId] = useState<string | null>(null)
 
   async function load() {
     try {
@@ -110,7 +120,11 @@ export function Billing() {
         invoices={invoices.filter((i) => i.job_id === selectedJob.id)}
         priceList={priceList}
         productName={productName}
-        onBack={() => setSelectedJobId(null)}
+        initialEditId={editInvoiceId}
+        onBack={() => {
+          setSelectedJobId(null)
+          setEditInvoiceId(null)
+        }}
         onChanged={load}
       />
     )
@@ -201,7 +215,7 @@ export function Billing() {
               <div key={inv.id} className="logcard">
                 <div className="logcard-head">
                   <div>
-                    <span className="logcard-date num">{d10(inv.date_sent) || 'draft'}</span>
+                    <span className="logcard-date num">{formatDate(inv.date_sent) || 'draft'}</span>
                     <span className="logcard-job">{inv.job?.name ?? '—'}</span>
                     <span className="label logcard-meta">
                       Bill #{inv.bill_number ?? '—'} · {inv.job?.client?.name ?? 'No client'}
@@ -213,20 +227,35 @@ export function Billing() {
                 </div>
                 <div className="logcard-foot label">
                   <span className="num bill-total">{formatMoney(total)}</span>
+                  <button type="button" className="btn-ghost" onClick={() => void viewPdf(inv, productName)}>
+                    View
+                  </button>
                   <button type="button" className="btn-ghost" onClick={() => void sharePdf(inv, productName)}>
                     Send PDF
                   </button>
                   {inv.status === 'draft' && (
-                    <button
-                      type="button"
-                      className="btn-ghost"
-                      onClick={async () => {
-                        await updateInvoiceStatus(inv.id, 'sent_to_michelle')
-                        await load()
-                      }}
-                    >
-                      Mark sent
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        onClick={() => {
+                          setEditInvoiceId(inv.id)
+                          setSelectedJobId(inv.job_id)
+                        }}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        onClick={async () => {
+                          await updateInvoiceStatus(inv.id, 'sent_to_michelle')
+                          await load()
+                        }}
+                      >
+                        Mark sent
+                      </button>
+                    </>
                   )}
                   <button
                     type="button"
@@ -257,6 +286,7 @@ function JobBillingDetail({
   invoices,
   priceList,
   productName,
+  initialEditId,
   onBack,
   onChanged,
 }: {
@@ -265,10 +295,14 @@ function JobBillingDetail({
   invoices: InvoiceFull[]
   priceList: PriceListItem[]
   productName: Map<string, string>
+  initialEditId?: string | null
   onBack: () => void
   onChanged: () => void | Promise<void>
 }) {
   const [creating, setCreating] = useState(false)
+  const [editing, setEditing] = useState<InvoiceFull | null>(
+    () => invoices.find((i) => i.id === initialEditId) ?? null,
+  )
 
   const nextBill = useMemo(() => {
     const nums = invoices
@@ -300,16 +334,21 @@ function JobBillingDetail({
         </div>
       </div>
 
-      {creating ? (
+      {creating || editing ? (
         <DraftInvoiceEditor
           job={job}
           billing={billing}
           priceList={priceList}
           nextBill={nextBill}
           productName={productName}
-          onCancel={() => setCreating(false)}
+          existing={editing}
+          onCancel={() => {
+            setCreating(false)
+            setEditing(null)
+          }}
           onSaved={async () => {
             setCreating(false)
+            setEditing(null)
             await onChanged()
           }}
         />
@@ -361,7 +400,7 @@ function JobBillingDetail({
                   <div className="logcard-head">
                     <div>
                       <span className="logcard-date num">Bill #{inv.bill_number ?? '—'}</span>
-                      <span className="label logcard-meta">{d10(inv.date_sent) || 'no date'}</span>
+                      <span className="label logcard-meta">{formatDate(inv.date_sent) || 'no date'}</span>
                     </div>
                     <span className={`pill ${inv.status === 'draft' ? 'pill-draft' : 'pill-sent'}`}>
                       {inv.status === 'draft' ? 'Draft' : 'Sent'}
@@ -369,7 +408,11 @@ function JobBillingDetail({
                   </div>
                   <div className="logcard-foot label">
                     <span className="num bill-total">{formatMoney(total)}</span>
+                    <button type="button" className="btn-ghost" onClick={() => void viewPdf(inv, productName)}>View</button>
                     <button type="button" className="btn-ghost" onClick={() => void sharePdf(inv, productName)}>Send PDF</button>
+                    {inv.status === 'draft' && (
+                      <button type="button" className="btn-ghost" onClick={() => setEditing(inv)}>Edit</button>
+                    )}
                   </div>
                 </div>
               )
@@ -397,6 +440,7 @@ function DraftInvoiceEditor({
   priceList,
   nextBill,
   productName,
+  existing,
   onCancel,
   onSaved,
 }: {
@@ -405,22 +449,36 @@ function DraftInvoiceEditor({
   priceList: PriceListItem[]
   nextBill: string
   productName: Map<string, string>
+  existing?: InvoiceFull | null
   onCancel: () => void
   onSaved: () => void | Promise<void>
 }) {
-  const [billNumber, setBillNumber] = useState(nextBill)
-  const [dateSent, setDateSent] = useState(today())
-  const [notes, setNotes] = useState('')
+  const isEdit = !!existing
+  const [billNumber, setBillNumber] = useState(existing?.bill_number ?? nextBill)
+  const [dateSent, setDateSent] = useState(
+    existing?.date_sent ? existing.date_sent.slice(0, 10) : today(),
+  )
+  const [notes, setNotes] = useState(existing?.notes ?? '')
   const [lines, setLines] = useState<DraftLine[]>(
-    billing.lines
-      .filter((l) => l.remainingQty > 0.005)
-      .map((l) => ({
-        product_id: l.productId,
-        description: l.description,
-        unit: l.unit,
-        quantity: String(l.remainingQty),
-        rate: String(l.rate),
-      })),
+    existing
+      ? [...existing.lines]
+          .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+          .map((l) => ({
+            product_id: l.product_id,
+            description: l.description ?? (l.product_id ? productName.get(l.product_id) ?? '' : ''),
+            unit: l.unit,
+            quantity: String(l.quantity),
+            rate: String(l.rate),
+          }))
+      : billing.lines
+          .filter((l) => l.remainingQty > 0.005)
+          .map((l) => ({
+            product_id: l.productId,
+            description: l.description,
+            unit: l.unit,
+            quantity: String(l.remainingQty),
+            rate: String(l.rate),
+          })),
   )
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -470,20 +528,24 @@ function DraftInvoiceEditor({
       return
     }
 
-    // 1) Create the invoice — exactly once. A failure here is the only thing
-    //    that should keep the editor open for a retry.
+    // 1) Save the invoice — exactly once. A failure here is the only thing
+    //    that should keep the editor open for a retry. Editing an existing
+    //    draft updates it in place + replaces its lines; otherwise we create.
+    const header = {
+      bill_number: billNumber || null,
+      date_sent: status === 'sent_to_michelle' ? dateSent || today() : dateSent || null,
+      status,
+      notes: notes || null,
+    }
     let id: string
     try {
-      id = await createInvoice(
-        {
-          job_id: job.id,
-          bill_number: billNumber || null,
-          date_sent: status === 'sent_to_michelle' ? dateSent || today() : dateSent || null,
-          status,
-          notes: notes || null,
-        },
-        payload,
-      )
+      if (existing) {
+        await updateInvoice(existing.id, header)
+        await replaceInvoiceLines(existing.id, payload)
+        id = existing.id
+      } else {
+        id = await createInvoice({ job_id: job.id, ...header }, payload)
+      }
       savedRef.current = true
     } catch (e) {
       setErr(errMsg(e))
@@ -530,7 +592,7 @@ function DraftInvoiceEditor({
   return (
     <div className="logcard logcard-editing">
       <div className="logcard-head">
-        <strong>New invoice — {job.name}</strong>
+        <strong>{isEdit ? 'Edit invoice' : 'New invoice'} — {job.name}</strong>
         <span className="label">Bill #{billNumber}</span>
       </div>
 

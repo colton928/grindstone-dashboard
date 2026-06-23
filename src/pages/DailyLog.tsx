@@ -10,7 +10,7 @@ import {
   updateDailyLog,
   updateDailyLogItem,
 } from '../lib/queries'
-import { formatQty } from '../lib/progress'
+import { formatDate, formatQty } from '../lib/progress'
 import type { Client, DailyLogFull, PriceListItem } from '../lib/types'
 
 const d10 = (s: string | null | undefined) => (s ? s.slice(0, 10) : '')
@@ -169,7 +169,7 @@ export function DailyLog() {
               <article key={log.id} className="logcard">
                 <div className="logcard-head">
                   <div>
-                    <span className="logcard-date num">{d10(log.log_date)}</span>
+                    <span className="logcard-date num">{formatDate(log.log_date)}</span>
                     <span className="logcard-job">
                       {log.job ? (
                         <Link to={`/jobs/${log.job.id}`}>{log.job.name}</Link>

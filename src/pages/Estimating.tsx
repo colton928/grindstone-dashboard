@@ -1,26 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   createEstimate,
+  createJob,
   deleteEstimate,
   fetchAllEstimates,
-  fetchAllJobs,
   fetchClientPriceRules,
+  fetchClients,
   fetchPriceList,
   updateEstimateStatus,
   type NewEstimateLine,
 } from '../lib/queries'
 import { nextEstimateNumber, seedRate } from '../lib/estimate'
-import { formatMoney } from '../lib/progress'
+import { formatDate, formatMoney } from '../lib/progress'
 import type {
+  Client,
   ClientPriceRule,
   EstimateFull,
   EstimateStatus,
-  JobWithClient,
   PriceListItem,
 } from '../lib/types'
 
 const today = () => new Date().toISOString().slice(0, 10)
-const d10 = (s: string | null | undefined) => (s ? s.slice(0, 10) : '')
 
 function errMsg(e: unknown): string {
   if (e instanceof Error) return e.message
@@ -40,8 +40,14 @@ async function sharePdf(estimate: EstimateFull, productName: Map<string, string>
   await shareEstimatePdf(estimate, productName)
 }
 
+// Quick view — open the estimate PDF in a new tab to look at it.
+async function viewPdf(estimate: EstimateFull, productName: Map<string, string>) {
+  const { viewEstimatePdf } = await import('../lib/pdf')
+  viewEstimatePdf(estimate, productName)
+}
+
 export function Estimating() {
-  const [jobs, setJobs] = useState<JobWithClient[]>([])
+  const [clients, setClients] = useState<Client[]>([])
   const [estimates, setEstimates] = useState<EstimateFull[]>([])
   const [priceList, setPriceList] = useState<PriceListItem[]>([])
   const [rules, setRules] = useState<ClientPriceRule[]>([])
@@ -52,13 +58,13 @@ export function Estimating() {
   async function load() {
     try {
       setLoading(true)
-      const [j, e, p, r] = await Promise.all([
-        fetchAllJobs(),
+      const [c, e, p, r] = await Promise.all([
+        fetchClients(),
         fetchAllEstimates(),
         fetchPriceList(),
         fetchClientPriceRules(),
       ])
-      setJobs(j)
+      setClients(c)
       setEstimates(e)
       setPriceList(p)
       setRules(r)
@@ -81,7 +87,7 @@ export function Estimating() {
   if (creating) {
     return (
       <NewEstimateEditor
-        jobs={jobs}
+        clients={clients}
         priceList={priceList.filter((p) => p.active)}
         rules={rules}
         existingNumbers={estimates.map((e) => e.estimate_number)}
@@ -143,7 +149,7 @@ export function Estimating() {
                   <span className="logcard-date num">Est #{est.estimate_number ?? '—'}</span>
                   <span className="logcard-job">{est.job?.name ?? '—'}</span>
                   <span className="label logcard-meta">
-                    {d10(est.estimate_date) || 'no date'} · {est.job?.client?.name ?? 'No client'}
+                    {formatDate(est.estimate_date) || 'no date'} · {est.job?.client?.name ?? 'No client'}
                   </span>
                 </div>
                 <span className={`pill ${est.status === 'draft' ? 'pill-draft' : 'pill-sent'}`}>
@@ -152,6 +158,9 @@ export function Estimating() {
               </div>
               <div className="logcard-foot label">
                 <span className="num bill-total">{formatMoney(estimateTotal(est))}</span>
+                <button type="button" className="btn-ghost" onClick={() => void viewPdf(est, productName)}>
+                  View
+                </button>
                 <button type="button" className="btn-ghost" onClick={() => void sharePdf(est, productName)}>
                   Send PDF
                 </button>
@@ -199,7 +208,7 @@ interface DraftLine {
 }
 
 function NewEstimateEditor({
-  jobs,
+  clients,
   priceList,
   rules,
   existingNumbers,
@@ -207,7 +216,7 @@ function NewEstimateEditor({
   onCancel,
   onSaved,
 }: {
-  jobs: JobWithClient[]
+  clients: Client[]
   priceList: PriceListItem[]
   rules: ClientPriceRule[]
   existingNumbers: (string | null)[]
@@ -215,7 +224,10 @@ function NewEstimateEditor({
   onCancel: () => void
   onSaved: () => void | Promise<void>
 }) {
-  const [jobId, setJobId] = useState<string>(jobs[0]?.id ?? '')
+  // An estimate always starts a brand-new job — just type the job name. The
+  // client is chosen separately so its pricing rules (e.g. Noland) auto-apply.
+  const [jobName, setJobName] = useState('')
+  const [clientId, setClientId] = useState<string>('')
   const [estNumber, setEstNumber] = useState(() => nextEstimateNumber(existingNumbers))
   const [estDate, setEstDate] = useState(today())
   const [notes, setNotes] = useState('')
@@ -224,11 +236,11 @@ function NewEstimateEditor({
   const [err, setErr] = useState<string | null>(null)
   const savedRef = useRef(false)
 
-  const job = jobs.find((j) => j.id === jobId) ?? null
-  // Client rules for the selected job's client (auto-applied when seeding lines).
+  const client = clients.find((c) => c.id === clientId) ?? null
+  // Client rules for the chosen client (auto-applied when seeding lines).
   const jobRules = useMemo(
-    () => (job?.client_id ? rules.filter((r) => r.client_id === job.client_id) : []),
-    [rules, job],
+    () => (clientId ? rules.filter((r) => r.client_id === clientId) : []),
+    [rules, clientId],
   )
 
   const updateLine = (i: number, patch: Partial<DraftLine>) =>
@@ -275,8 +287,8 @@ function NewEstimateEditor({
 
   async function save(status: EstimateStatus, andPdf: boolean) {
     if (saving || savedRef.current) return
-    if (!jobId) {
-      setErr('Pick a job for this estimate.')
+    if (!jobName.trim()) {
+      setErr('Enter a job name for this estimate.')
       return
     }
     setSaving(true)
@@ -300,8 +312,12 @@ function NewEstimateEditor({
       return
     }
 
+    // Always a new job — create it first, then attach the estimate to it.
     let id: string
+    let jobId: string
     try {
+      const newJob = await createJob({ name: jobName.trim(), client_id: clientId || null })
+      jobId = newJob.id
       id = await createEstimate(
         {
           job_id: jobId,
@@ -329,7 +345,11 @@ function NewEstimateEditor({
             estimate_date: estDate || today(),
             status,
             notes: notes || null,
-            job: job ? { id: job.id, name: job.name, client: job.client ?? null } : null,
+            job: {
+              id: jobId,
+              name: jobName.trim(),
+              client: client ? { id: client.id, name: client.name } : null,
+            },
             lines: payload.map((l, idx) => ({
               id: `tmp-${idx}`,
               estimate_id: id,
@@ -363,13 +383,20 @@ function NewEstimateEditor({
 
       <div className="logcard logcard-editing">
         <label className="filter">
-          <span className="label">Job</span>
-          <select value={jobId} onChange={(e) => setJobId(e.target.value)}>
-            {jobs.length === 0 && <option value="">No jobs</option>}
-            {jobs.map((j) => (
-              <option key={j.id} value={j.id}>
-                {j.name}{j.client?.name ? ` — ${j.client.name}` : ''}
-              </option>
+          <span className="label">Job name</span>
+          <input
+            type="text"
+            value={jobName}
+            placeholder="New job name"
+            onChange={(e) => setJobName(e.target.value)}
+          />
+        </label>
+        <label className="filter">
+          <span className="label">Client</span>
+          <select value={clientId} onChange={(e) => setClientId(e.target.value)}>
+            <option value="">— no client —</option>
+            {clients.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
         </label>

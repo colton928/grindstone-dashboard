@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { formatDate } from './progress'
 import type { EstimateFull, InvoiceFull } from './types'
 
 const money = (n: number) =>
@@ -26,7 +27,7 @@ export function buildInvoicePdf(
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(10)
   if (invoice.bill_number) doc.text(`Bill #${invoice.bill_number}`, pageW - M, 72, { align: 'right' })
-  if (invoice.date_sent) doc.text(invoice.date_sent.slice(0, 10), pageW - M, 86, { align: 'right' })
+  if (invoice.date_sent) doc.text(formatDate(invoice.date_sent), pageW - M, 86, { align: 'right' })
 
   // Bill-to / job block
   let y = 118
@@ -115,6 +116,12 @@ export async function shareInvoicePdf(
   await shareOrSave(doc, invoiceFileName(invoice))
 }
 
+// Quick view: open the rendered PDF in a new tab to look at it (no share sheet,
+// no download prompt). Falls back to download if the browser blocks the tab.
+export function viewInvoicePdf(invoice: InvoiceFull, productName: Map<string, string>): void {
+  openInTab(buildInvoicePdf(invoice, productName), invoiceFileName(invoice))
+}
+
 // ─────────────────────── Estimate PDF ───────────────────────
 
 // Builds a clean one-page estimate PDF and returns the jsPDF doc. Mirrors the
@@ -139,7 +146,7 @@ export function buildEstimatePdf(
   if (estimate.estimate_number)
     doc.text(`Estimate #${estimate.estimate_number}`, pageW - M, 72, { align: 'right' })
   if (estimate.estimate_date)
-    doc.text(estimate.estimate_date.slice(0, 10), pageW - M, 86, { align: 'right' })
+    doc.text(formatDate(estimate.estimate_date), pageW - M, 86, { align: 'right' })
 
   let y = 118
   doc.setFontSize(9)
@@ -214,6 +221,24 @@ export async function shareEstimatePdf(
 ): Promise<void> {
   const doc = buildEstimatePdf(estimate, productName)
   await shareOrSave(doc, estimateFileName(estimate))
+}
+
+// Quick view: open the rendered estimate PDF in a new tab (see viewInvoicePdf).
+export function viewEstimatePdf(estimate: EstimateFull, productName: Map<string, string>): void {
+  openInTab(buildEstimatePdf(estimate, productName), estimateFileName(estimate))
+}
+
+// Opens the PDF in a new browser tab for a quick look. If the popup is blocked
+// (or there's no window), falls back to a normal download so the file still lands.
+function openInTab(doc: jsPDF, fname: string): void {
+  try {
+    const url = doc.output('bloburl') as unknown as string
+    const win = window.open(url, '_blank')
+    if (win) return
+  } catch {
+    /* fall through to download */
+  }
+  doc.save(fname)
 }
 
 // Opens the native share sheet with the PDF attached, falling back to download.

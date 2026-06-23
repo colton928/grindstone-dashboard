@@ -272,6 +272,32 @@ export async function updateInvoice(
   if (error) throw error
 }
 
+// Replace all line items on an invoice (used when editing a draft): clear the
+// old ones, then insert the edited set. amount stays a generated column.
+export async function replaceInvoiceLines(
+  invoiceId: string,
+  lines: NewInvoiceLine[],
+): Promise<void> {
+  const { error: delErr } = await supabase
+    .from('invoice_line_items')
+    .delete()
+    .eq('invoice_id', invoiceId)
+  if (delErr) throw delErr
+  if (lines.length) {
+    const rows = lines.map((l) => ({
+      invoice_id: invoiceId,
+      product_id: l.product_id,
+      description: l.description,
+      unit: l.unit,
+      quantity: l.quantity,
+      rate: l.rate,
+      sort_order: l.sort_order,
+    }))
+    const { error: lineErr } = await supabase.from('invoice_line_items').insert(rows)
+    if (lineErr) throw lineErr
+  }
+}
+
 export async function deleteInvoice(id: string): Promise<void> {
   // invoice_line_items cascade on delete.
   const { error } = await supabase.from('invoices').delete().eq('id', id)
@@ -288,6 +314,20 @@ export async function fetchAllJobs(): Promise<JobWithClient[]> {
     .order('name')
   if (error) throw error
   return (data ?? []) as JobWithClient[]
+}
+
+// Create a brand-new job (estimates always start a fresh job — see Estimating).
+export async function createJob(job: {
+  name: string
+  client_id: string | null
+}): Promise<JobWithClient> {
+  const { data, error } = await supabase
+    .from('jobs')
+    .insert({ name: job.name, client_id: job.client_id })
+    .select('*, client:clients(id, name)')
+    .single()
+  if (error) throw error
+  return data as JobWithClient
 }
 
 export async function fetchClientPriceRules(): Promise<ClientPriceRule[]> {

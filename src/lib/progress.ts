@@ -145,3 +145,13 @@ export function formatPct(n: number | null): string {
   if (n == null) return '—'
   return `${Math.round(n)}%`
 }
+
+// Display a stored ISO date (YYYY-MM-DD, or a full timestamp) as MM-DD-YYYY —
+// the one date format used everywhere in the app (logs, bills, estimates, PDFs).
+// Storage stays ISO; this only changes what's shown.
+export function formatDate(s: string | null | undefined): string {
+  if (!s) return ''
+  const iso = s.slice(0, 10)
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  return m ? `${m[2]}-${m[3]}-${m[1]}` : iso
+}
