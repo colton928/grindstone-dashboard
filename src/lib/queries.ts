@@ -11,6 +11,7 @@ import type {
   EstimateStatus,
   InvoiceFull,
   InvoiceStatus,
+  JobStatus,
   JobWithClient,
   PriceListItem,
 } from './types'
@@ -314,6 +315,12 @@ export async function fetchAllJobs(): Promise<JobWithClient[]> {
     .order('name')
   if (error) throw error
   return (data ?? []) as JobWithClient[]
+}
+
+// Manually archive / restore a job (status: active | inactive | archived).
+export async function updateJobStatus(id: string, status: JobStatus): Promise<void> {
+  const { error } = await supabase.from('jobs').update({ status }).eq('id', id)
+  if (error) throw error
 }
 
 // Create a brand-new job (estimates always start a fresh job — see Estimating).

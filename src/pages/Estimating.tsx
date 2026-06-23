@@ -54,6 +54,8 @@ export function Estimating() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  const [clientFilter, setClientFilter] = useState<string>('') // '' = all clients
+  const [showArchived, setShowArchived] = useState(false)
 
   async function load() {
     try {
@@ -101,9 +103,25 @@ export function Estimating() {
     )
   }
 
+  const archivedCount = estimates.filter((e) => e.status === 'archived').length
+  const clientNames = [...new Set(estimates.map((e) => e.job?.client?.name).filter(Boolean))].sort() as string[]
+
+  // Visible list: hide archived unless toggled on, apply the client filter, and
+  // sort by client then job so bids group together (43+ estimates now).
+  const visible = estimates
+    .filter((e) => (showArchived ? e.status === 'archived' : e.status !== 'archived'))
+    .filter((e) => !clientFilter || e.job?.client?.name === clientFilter)
+    .sort(
+      (a, b) =>
+        (a.job?.client?.name ?? '').localeCompare(b.job?.client?.name ?? '') ||
+        (a.job?.name ?? '').localeCompare(b.job?.name ?? ''),
+    )
+
   const drafts = estimates.filter((e) => e.status === 'draft')
   const sent = estimates.filter((e) => e.status === 'sent_to_michelle')
-  const totalValue = estimates.reduce((s, e) => s + estimateTotal(e), 0)
+  const totalValue = estimates
+    .filter((e) => e.status !== 'archived')
+    .reduce((s, e) => s + estimateTotal(e), 0)
 
   return (
     <div className="page">
@@ -137,12 +155,35 @@ export function Estimating() {
         </button>
       </div>
 
-      <h2>Estimate history</h2>
-      {estimates.length === 0 ? (
-        <div className="empty-card"><p className="label">No estimates yet.</p></div>
+      <div className="bill-overview-head">
+        <h2>{showArchived ? 'Archived bids' : 'Estimate history'}</h2>
+        <div className="est-filters">
+          {clientNames.length > 1 && (
+            <label className="filter">
+              <span className="label">Client</span>
+              <select value={clientFilter} onChange={(e) => setClientFilter(e.target.value)}>
+                <option value="">All clients</option>
+                {clientNames.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </label>
+          )}
+          <button
+            type="button"
+            className="btn-ghost"
+            onClick={() => setShowArchived((v) => !v)}
+          >
+            {showArchived ? '← Active bids' : `Archived (${archivedCount})`}
+          </button>
+        </div>
+      </div>
+
+      {visible.length === 0 ? (
+        <div className="empty-card"><p className="label">{showArchived ? 'No archived bids.' : 'No estimates yet.'}</p></div>
       ) : (
         <div className="lines">
-          {estimates.map((est) => (
+          {visible.map((est) => (
             <div key={est.id} className="logcard">
               <div className="logcard-head">
                 <div>
@@ -152,8 +193,8 @@ export function Estimating() {
                     {formatDate(est.estimate_date) || 'no date'} · {est.job?.client?.name ?? 'No client'}
                   </span>
                 </div>
-                <span className={`pill ${est.status === 'draft' ? 'pill-draft' : 'pill-sent'}`}>
-                  {est.status === 'draft' ? 'Draft' : 'Sent'}
+                <span className={`pill ${est.status === 'draft' ? 'pill-draft' : est.status === 'archived' ? 'pill-archived' : 'pill-sent'}`}>
+                  {est.status === 'draft' ? 'Draft' : est.status === 'archived' ? 'Archived' : 'Sent'}
                 </span>
               </div>
               <div className="logcard-foot label">
@@ -174,6 +215,29 @@ export function Estimating() {
                     }}
                   >
                     Mark sent
+                  </button>
+                )}
+                {est.status === 'archived' ? (
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={async () => {
+                      await updateEstimateStatus(est.id, 'sent_to_michelle')
+                      await load()
+                    }}
+                  >
+                    Restore
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={async () => {
+                      await updateEstimateStatus(est.id, 'archived')
+                      await load()
+                    }}
+                  >
+                    Archive
                   </button>
                 )}
                 <button

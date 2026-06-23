@@ -38,9 +38,10 @@ export interface JobWithClient extends Job {
   client: Pick<Client, 'id' | 'name'> | null
 }
 
-// Locked decision (context.md): estimates track only draft / sent-to-Michelle,
-// mirroring invoices. No "approved"/"lost" — Michelle/QuickBooks owns the rest.
-export type EstimateStatus = 'draft' | 'sent_to_michelle'
+// Locked decision (context.md): estimates track draft / sent-to-Michelle,
+// mirroring invoices. Plus "archived" for old bids Colton manually shelves.
+// (Legacy imported rows may still carry "approved"/"lost" — rendered as Sent.)
+export type EstimateStatus = 'draft' | 'sent_to_michelle' | 'archived'
 
 export interface Estimate {
   id: string

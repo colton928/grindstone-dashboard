@@ -635,6 +635,35 @@
   color: var(--text-soft);
   border: 1px solid var(--border);
 }
+.pill-archived {
+  background: var(--surface-2);
+  color: var(--text-soft);
+  border: 1px dashed var(--border-strong);
+  opacity: 0.8;
+}
+
+/* Section header with an inline filter control (Billing/Estimating overviews). */
+.bill-overview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.bill-overview-head h2 {
+  margin: 0;
+}
+.est-filters {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+.job-detail-head-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
 .bill-total {
   font-family: var(--heading);
   font-weight: 600;

@@ -8,6 +8,7 @@ import {
   replaceInvoiceLines,
   updateInvoice,
   updateInvoiceStatus,
+  updateJobStatus,
   type BillingRawData,
   type NewInvoiceLine,
 } from '../lib/queries'
@@ -51,6 +52,7 @@ export function Billing() {
   // When the user hits "Edit" on a draft from the overview, jump to that job's
   // billing detail with the draft already open in the editor.
   const [editInvoiceId, setEditInvoiceId] = useState<string | null>(null)
+  const [clientFilter, setClientFilter] = useState<string>('') // '' = all clients
 
   async function load() {
     try {
@@ -131,12 +133,19 @@ export function Billing() {
   }
 
   // ── Overview ──
+  // A job needs billing if it has ANY unbilled logged quantity — even when the
+  // work is unpriced ($0 rate), so jobs like Havenwood (all logged as "Other")
+  // still surface and can be billed manually. Archived jobs are hidden.
+  const clientNames = [...new Set(data.jobs.map((j) => j.client?.name).filter(Boolean))].sort() as string[]
   const jobsNeeding = data.jobs
-    .filter((j) => (billingByJob.get(j.id)?.hasUnbilled ?? false))
+    .filter((j) => j.status !== 'archived')
+    .filter((j) => (billingByJob.get(j.id)?.hasUnbilledQty ?? false))
+    .filter((j) => !clientFilter || j.client?.name === clientFilter)
     .sort(
       (a, b) =>
         (billingByJob.get(b.id)?.remainingValue ?? 0) -
-        (billingByJob.get(a.id)?.remainingValue ?? 0),
+          (billingByJob.get(a.id)?.remainingValue ?? 0) ||
+        a.name.localeCompare(b.name),
     )
 
   const totalRemaining = data.jobs.reduce(
@@ -174,13 +183,27 @@ export function Billing() {
         </div>
       </div>
 
-      <h2>Ready to bill</h2>
+      <div className="bill-overview-head">
+        <h2>Ready to bill</h2>
+        {clientNames.length > 1 && (
+          <label className="filter">
+            <span className="label">Client</span>
+            <select value={clientFilter} onChange={(e) => setClientFilter(e.target.value)}>
+              <option value="">All clients</option>
+              {clientNames.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </label>
+        )}
+      </div>
       {jobsNeeding.length === 0 ? (
         <div className="empty-card"><p className="label">Nothing outstanding — all logged work is billed.</p></div>
       ) : (
         <div className="job-grid">
           {jobsNeeding.map((job) => {
             const b = billingByJob.get(job.id)!
+            const needsPricing = !b.hasUnbilled // unbilled qty but $0 value → unpriced
             return (
               <button key={job.id} className="job-card billing-card" onClick={() => setSelectedJobId(job.id)}>
                 <div className="job-card-head">
@@ -188,11 +211,13 @@ export function Billing() {
                     <div className="job-name">{job.name}</div>
                     <div className="label job-meta">{job.client?.name ?? 'No client'}</div>
                   </div>
-                  <span className="pill pill-warn">Bill</span>
+                  <span className={`pill ${needsPricing ? 'pill-draft' : 'pill-warn'}`}>
+                    {needsPricing ? 'Price' : 'Bill'}
+                  </span>
                 </div>
                 <div className="job-card-pct">
-                  <span className="num">{formatMoney(b.remainingValue)}</span>
-                  <span className="label">to bill</span>
+                  <span className="num">{needsPricing ? 'Unpriced' : formatMoney(b.remainingValue)}</span>
+                  <span className="label">{needsPricing ? 'logged, needs pricing' : 'to bill'}</span>
                 </div>
                 <div className="label">{formatMoney(b.billedValue)} billed so far</div>
               </button>
@@ -314,9 +339,23 @@ function JobBillingDetail({
   return (
     <div className="page">
       <button type="button" className="back-link label" onClick={onBack}>← All billing</button>
-      <div className="job-detail-head">
-        <h1>{job.name}</h1>
-        <p className="label">{job.client?.name ?? 'No client'}</p>
+      <div className="job-detail-head job-detail-head-row">
+        <div>
+          <h1>{job.name}</h1>
+          <p className="label">{job.client?.name ?? 'No client'}</p>
+        </div>
+        <button
+          type="button"
+          className="btn-ghost edit-delete"
+          onClick={async () => {
+            if (!window.confirm(`Archive "${job.name}"? It'll drop off the billing list — you can restore it from the Estimating tab or by reactivating the job.`)) return
+            await updateJobStatus(job.id, 'archived')
+            onBack()
+            await onChanged()
+          }}
+        >
+          Archive job
+        </button>
       </div>
 
       <div className="stats">

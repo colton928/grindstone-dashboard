@@ -35,7 +35,8 @@ export interface JobBilling {
   loggedValue: number
   billedValue: number
   remainingValue: number
-  hasUnbilled: boolean
+  hasUnbilled: boolean // unbilled work with a known dollar value > 0
+  hasUnbilledQty: boolean // any unbilled logged quantity, even if unpriced ($0 rate)
 }
 
 const EPS = 0.005
@@ -88,11 +89,13 @@ export function computeJobBilling(
   const lines: BillingLine[] = []
   let loggedValue = 0
   let remainingValue = 0
+  let unbilledQty = 0
 
   for (const pid of productIds) {
     const loggedQty = logged.get(pid) ?? 0
     const billedQty = billedQtyByProduct.get(pid) ?? 0
     const remainingQty = Math.max(0, loggedQty - billedQty)
+    unbilledQty += remainingQty
     const rate = estRate.get(pid) ?? pRate.get(pid) ?? 0
     const remainingAmount = remainingQty * rate
     loggedValue += loggedQty * rate
@@ -124,5 +127,6 @@ export function computeJobBilling(
     billedValue,
     remainingValue,
     hasUnbilled: remainingValue > EPS,
+    hasUnbilledQty: unbilledQty > EPS,
   }
 }
