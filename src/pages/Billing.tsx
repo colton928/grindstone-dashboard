@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   createInvoice,
   deleteInvoice,
@@ -21,10 +21,17 @@ import type {
 const today = () => new Date().toISOString().slice(0, 10)
 const d10 = (s: string | null | undefined) => (s ? s.slice(0, 10) : '')
 
-// Lazy-load jsPDF (~450KB) only when a PDF is actually generated.
-async function downloadPdf(invoice: InvoiceFull, productName: Map<string, string>) {
-  const { downloadInvoicePdf } = await import('../lib/pdf')
-  downloadInvoicePdf(invoice, productName)
+// Lazy-load jsPDF (~450KB) only when a PDF is actually generated, then open the
+// native share sheet (falls back to download).
+async function sharePdf(invoice: InvoiceFull, productName: Map<string, string>) {
+  const { shareInvoicePdf } = await import('../lib/pdf')
+  await shareInvoicePdf(invoice, productName)
+}
+
+function errMsg(e: unknown): string {
+  if (e instanceof Error) return e.message
+  if (e && typeof e === 'object' && 'message' in e) return String((e as { message: unknown }).message)
+  return String(e)
 }
 
 export function Billing() {
@@ -206,8 +213,8 @@ export function Billing() {
                 </div>
                 <div className="logcard-foot label">
                   <span className="num bill-total">{formatMoney(total)}</span>
-                  <button type="button" className="btn-ghost" onClick={() => void downloadPdf(inv, productName)}>
-                    PDF
+                  <button type="button" className="btn-ghost" onClick={() => void sharePdf(inv, productName)}>
+                    Send PDF
                   </button>
                   {inv.status === 'draft' && (
                     <button
@@ -362,7 +369,7 @@ function JobBillingDetail({
                   </div>
                   <div className="logcard-foot label">
                     <span className="num bill-total">{formatMoney(total)}</span>
-                    <button type="button" className="btn-ghost" onClick={() => void downloadPdf(inv, productName)}>PDF</button>
+                    <button type="button" className="btn-ghost" onClick={() => void sharePdf(inv, productName)}>Send PDF</button>
                   </div>
                 </div>
               )
@@ -417,6 +424,7 @@ function DraftInvoiceEditor({
   )
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const savedRef = useRef(false) // guards against double-submit creating duplicates
 
   const updateLine = (i: number, patch: Partial<DraftLine>) =>
     setLines((p) => p.map((l, idx) => (idx === i ? { ...l, ...patch } : l)))
@@ -441,20 +449,32 @@ function DraftInvoiceEditor({
   const total = lines.reduce((s, l) => s + (Number(l.quantity) || 0) * (Number(l.rate) || 0), 0)
 
   async function save(status: InvoiceStatus, andPdf: boolean) {
+    if (saving || savedRef.current) return // never create the same invoice twice
+    setSaving(true)
+    setErr(null)
+
+    const payload: NewInvoiceLine[] = lines
+      .filter((l) => (Number(l.quantity) || 0) !== 0)
+      .map((l, idx) => ({
+        product_id: l.product_id,
+        description: l.description || null,
+        unit: l.unit,
+        quantity: Number(l.quantity) || 0,
+        rate: Number(l.rate) || 0,
+        sort_order: idx,
+      }))
+
+    if (payload.length === 0) {
+      setErr('Add at least one line with a quantity before saving.')
+      setSaving(false)
+      return
+    }
+
+    // 1) Create the invoice — exactly once. A failure here is the only thing
+    //    that should keep the editor open for a retry.
+    let id: string
     try {
-      setSaving(true)
-      setErr(null)
-      const payload: NewInvoiceLine[] = lines
-        .filter((l) => (Number(l.quantity) || 0) !== 0)
-        .map((l, idx) => ({
-          product_id: l.product_id,
-          description: l.description || null,
-          unit: l.unit,
-          quantity: Number(l.quantity) || 0,
-          rate: Number(l.rate) || 0,
-          sort_order: idx,
-        }))
-      const id = await createInvoice(
+      id = await createInvoice(
         {
           job_id: job.id,
           bill_number: billNumber || null,
@@ -464,9 +484,18 @@ function DraftInvoiceEditor({
         },
         payload,
       )
-      if (andPdf) {
-        // Build a local InvoiceFull for immediate download (avoids a refetch race).
-        void downloadPdf(
+      savedRef.current = true
+    } catch (e) {
+      setErr(errMsg(e))
+      setSaving(false)
+      return
+    }
+
+    // 2) PDF/share is best-effort — it must NOT block closing or cause a re-save.
+    //    (The invoice is already saved and re-downloadable from history.)
+    if (andPdf) {
+      try {
+        await sharePdf(
           {
             id,
             job_id: job.id,
@@ -489,12 +518,13 @@ function DraftInvoiceEditor({
           },
           productName,
         )
+      } catch {
+        /* sharing/printing failed — invoice is saved; user can re-send from history */
       }
-      await onSaved()
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e))
-      setSaving(false)
     }
+
+    // 3) Close + refresh.
+    await onSaved()
   }
 
   return (
@@ -568,7 +598,7 @@ function DraftInvoiceEditor({
 
       <div className="edit-actions">
         <button type="button" className="btn-primary" disabled={saving} onClick={() => save('sent_to_michelle', true)}>
-          {saving ? 'Saving…' : 'Save, mark sent + PDF'}
+          {saving ? 'Saving…' : 'Save & send PDF'}
         </button>
         <button type="button" className="btn-ghost" disabled={saving} onClick={() => save('draft', false)}>
           Save draft

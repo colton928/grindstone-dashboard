@@ -19,11 +19,6 @@ export function buildInvoicePdf(
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(20)
   doc.text('GRINDSTONE CONCRETE', M, 56)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(10)
-  doc.setTextColor(110)
-  doc.text('Concrete flatwork & curb', M, 72)
-  doc.setTextColor(20)
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(22)
@@ -107,4 +102,28 @@ export function invoiceFileName(invoice: InvoiceFull): string {
 
 export function downloadInvoicePdf(invoice: InvoiceFull, productName: Map<string, string>): void {
   buildInvoicePdf(invoice, productName).save(invoiceFileName(invoice))
+}
+
+// Opens the native share sheet with the PDF attached (so it can go straight into
+// an iMessage thread). Falls back to a normal download when sharing files isn't
+// supported. If the user cancels the share sheet, nothing else happens.
+export async function shareInvoicePdf(
+  invoice: InvoiceFull,
+  productName: Map<string, string>,
+): Promise<void> {
+  const doc = buildInvoicePdf(invoice, productName)
+  const fname = invoiceFileName(invoice)
+  try {
+    const file = new File([doc.output('blob')], fname, { type: 'application/pdf' })
+    const nav = navigator as Navigator & { canShare?: (d: { files: File[] }) => boolean }
+    if (nav.canShare?.({ files: [file] })) {
+      await nav.share({ files: [file], title: fname })
+      return
+    }
+  } catch (e) {
+    // User cancelled the share sheet — don't also download.
+    if (e instanceof Error && e.name === 'AbortError') return
+    // Otherwise fall through to a plain download.
+  }
+  doc.save(fname)
 }
