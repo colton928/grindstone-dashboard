@@ -247,7 +247,7 @@ export async function createInvoice(
       unit: l.unit,
       quantity: l.quantity,
       rate: l.rate,
-      amount: l.quantity * l.rate,
+      // amount is a generated column (quantity * rate) — Postgres computes it, don't insert.
       sort_order: l.sort_order,
     }))
     const { error: lineErr } = await supabase.from('invoice_line_items').insert(rows)
