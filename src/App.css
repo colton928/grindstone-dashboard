@@ -615,6 +615,86 @@
   background: #c0392b;
 }
 
+/* ───────────────────────── Billing ───────────────────────── */
+.billing-card {
+  text-align: left;
+  width: 100%;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.billing-card .job-card-pct .num {
+  color: var(--accent);
+}
+.pill-sent {
+  background: rgba(80, 180, 120, 0.16);
+  color: var(--good);
+}
+.pill-draft {
+  background: var(--surface-2);
+  color: var(--text-soft);
+  border: 1px solid var(--border);
+}
+.bill-total {
+  font-family: var(--heading);
+  font-weight: 600;
+  color: var(--text-h);
+  margin-right: auto;
+}
+.bill-action-row {
+  display: flex;
+}
+.bill-action-row .btn-primary {
+  width: 100%;
+}
+.remain-hot {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* draft invoice editor */
+.bill-line {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+.bill-line-nums {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.bill-line-nums .edit-qty {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.bill-x {
+  flex: 0 0 auto;
+}
+.bill-line-amt {
+  flex: 1 1 auto;
+  text-align: right;
+  font-family: var(--heading);
+  color: var(--text-h);
+  min-width: 72px;
+}
+.bill-total-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+.bill-grand {
+  font-family: var(--heading);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-h);
+}
+
 /* ───────────────────────── Empty / coming soon ───────────────────────── */
 .empty-card {
   background: var(--surface);

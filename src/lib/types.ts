@@ -91,3 +91,37 @@ export interface DailyLogFull extends DailyLog {
   } | null
   items: DailyLogItem[]
 }
+
+export type InvoiceStatus = 'draft' | 'sent_to_michelle'
+
+export interface Invoice {
+  id: string
+  job_id: string
+  bill_number: string | null
+  date_sent: string | null
+  status: InvoiceStatus
+  notes: string | null
+  created_at?: string
+}
+
+export interface InvoiceLineItem {
+  id: string
+  invoice_id: string
+  product_id: string | null
+  description: string | null
+  unit: string | null
+  quantity: number
+  rate: number
+  amount: number | null
+  sort_order: number | null
+}
+
+// An invoice with its job/client and line items, for the Billing tab.
+export interface InvoiceFull extends Invoice {
+  job: {
+    id: string
+    name: string
+    client: Pick<Client, 'id' | 'name'> | null
+  } | null
+  lines: InvoiceLineItem[]
+}

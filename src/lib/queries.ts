@@ -6,6 +6,8 @@ import type {
   DailyLogItem,
   Estimate,
   EstimateLineItem,
+  InvoiceFull,
+  InvoiceStatus,
   JobWithClient,
   PriceListItem,
 } from './types'
@@ -154,5 +156,121 @@ export async function addDailyLogItem(
 
 export async function deleteDailyLogItem(id: string): Promise<void> {
   const { error } = await supabase.from('daily_log_items').delete().eq('id', id)
+  if (error) throw error
+}
+
+// ─────────────────────── Billing tab (Phase 2) ───────────────────────
+
+export interface BillingRawData {
+  jobs: JobWithClient[]
+  logged: { job_id: string; product_id: string | null; quantity: number }[]
+  billed: { job_id: string; product_id: string | null; quantity: number; rate: number; amount: number | null }[]
+  estRates: { job_id: string; product_id: string | null; rate: number }[]
+}
+
+// One bulk pull powering the billing tracker (compute per-job client-side).
+export async function fetchBillingData(): Promise<BillingRawData> {
+  const [jobsRes, loggedRes, billedRes, estRes] = await Promise.all([
+    supabase.from('jobs').select('*, client:clients(id, name)').order('name'),
+    supabase.from('daily_log_items').select('product_id, quantity, daily_logs!inner(job_id)'),
+    supabase
+      .from('invoice_line_items')
+      .select('product_id, quantity, rate, amount, invoices!inner(job_id)'),
+    supabase
+      .from('estimate_line_items')
+      .select('product_id, rate, estimates!inner(job_id, status)'),
+  ])
+  for (const r of [jobsRes, loggedRes, billedRes, estRes]) if (r.error) throw r.error
+
+  // PostgREST embeds the parent as a nested object; flatten to job_id.
+  const logged = (loggedRes.data ?? []).map((r: any) => ({
+    job_id: r.daily_logs.job_id as string,
+    product_id: r.product_id,
+    quantity: Number(r.quantity),
+  }))
+  const billed = (billedRes.data ?? []).map((r: any) => ({
+    job_id: r.invoices.job_id as string,
+    product_id: r.product_id,
+    quantity: Number(r.quantity),
+    rate: Number(r.rate),
+    amount: r.amount != null ? Number(r.amount) : null,
+  }))
+  const estRates = (estRes.data ?? [])
+    .filter((r: any) => r.estimates.status !== 'lost')
+    .map((r: any) => ({
+      job_id: r.estimates.job_id as string,
+      product_id: r.product_id,
+      rate: Number(r.rate),
+    }))
+
+  return { jobs: (jobsRes.data ?? []) as JobWithClient[], logged, billed, estRates }
+}
+
+// All invoices with job/client + line items (billing history + detail).
+export async function fetchAllInvoices(): Promise<InvoiceFull[]> {
+  const { data, error } = await supabase
+    .from('invoices')
+    .select('*, job:jobs(id, name, client:clients(id, name)), lines:invoice_line_items(*)')
+    .order('date_sent', { ascending: false, nullsFirst: false })
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []) as InvoiceFull[]
+}
+
+export interface NewInvoiceLine {
+  product_id: string | null
+  description: string | null
+  unit: string | null
+  quantity: number
+  rate: number
+  sort_order: number
+}
+
+export async function createInvoice(
+  invoice: {
+    job_id: string
+    bill_number: string | null
+    date_sent: string | null
+    status: InvoiceStatus
+    notes: string | null
+  },
+  lines: NewInvoiceLine[],
+): Promise<string> {
+  const { data, error } = await supabase.from('invoices').insert(invoice).select('id').single()
+  if (error) throw error
+  const invoiceId = data.id as string
+  if (lines.length) {
+    const rows = lines.map((l) => ({
+      invoice_id: invoiceId,
+      product_id: l.product_id,
+      description: l.description,
+      unit: l.unit,
+      quantity: l.quantity,
+      rate: l.rate,
+      amount: l.quantity * l.rate,
+      sort_order: l.sort_order,
+    }))
+    const { error: lineErr } = await supabase.from('invoice_line_items').insert(rows)
+    if (lineErr) throw lineErr
+  }
+  return invoiceId
+}
+
+export async function updateInvoiceStatus(id: string, status: InvoiceStatus): Promise<void> {
+  const { error } = await supabase.from('invoices').update({ status }).eq('id', id)
+  if (error) throw error
+}
+
+export async function updateInvoice(
+  id: string,
+  patch: { bill_number?: string | null; date_sent?: string | null; notes?: string | null; status?: InvoiceStatus },
+): Promise<void> {
+  const { error } = await supabase.from('invoices').update(patch).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteInvoice(id: string): Promise<void> {
+  // invoice_line_items cascade on delete.
+  const { error } = await supabase.from('invoices').delete().eq('id', id)
   if (error) throw error
 }
