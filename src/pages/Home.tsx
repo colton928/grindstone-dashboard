@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  fetchActiveJobs,
+  fetchHomeJobs,
   fetchJobEstimate,
   fetchJobLoggedItems,
   fetchPriceList,
@@ -49,7 +49,7 @@ export function Home() {
     ;(async () => {
       try {
         const [jobs, priceList, sched] = await Promise.all([
-          fetchActiveJobs(),
+          fetchHomeJobs(),
           fetchPriceList(),
           fetchUpcomingSchedule(5),
         ])

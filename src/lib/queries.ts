@@ -22,14 +22,23 @@ import type {
 
 // All reads run under the signed-in user (RLS = authenticated only).
 
-export async function fetchActiveJobs(): Promise<JobWithClient[]> {
-  const { data, error } = await supabase
-    .from('jobs')
-    .select('*, client:clients(id, name)')
-    .eq('status', 'active')
-    .order('name')
-  if (error) throw error
-  return (data ?? []) as JobWithClient[]
+// Jobs that belong on Home: a job is "active" when there's real field work on it
+// — i.e. it has at least one daily log (Colton's rule). Everything else (bids,
+// estimates with no work yet) stays off Home until a log shows up. Archived jobs
+// (manually retired) are always excluded even if they have logs. This is derived
+// from the data, so a job auto-appears the moment its first daily log syncs in
+// (including a brand-new job the sync creates from an unmatched log).
+export async function fetchHomeJobs(): Promise<JobWithClient[]> {
+  const [jobsRes, logsRes] = await Promise.all([
+    supabase.from('jobs').select('*, client:clients(id, name)').neq('status', 'archived').order('name'),
+    supabase.from('daily_logs').select('job_id'),
+  ])
+  if (jobsRes.error) throw jobsRes.error
+  if (logsRes.error) throw logsRes.error
+  const jobsWithLogs = new Set(
+    ((logsRes.data ?? []) as { job_id: string | null }[]).map((r) => r.job_id),
+  )
+  return ((jobsRes.data ?? []) as JobWithClient[]).filter((j) => jobsWithLogs.has(j.id))
 }
 
 export async function fetchJob(id: string): Promise<JobWithClient | null> {
