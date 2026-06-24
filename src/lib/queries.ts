@@ -482,6 +482,37 @@ export async function deleteJobIfEmpty(jobId: string): Promise<boolean> {
   return true
 }
 
+// Merge one job's data into another, then delete the emptied source job. Moves
+// estimates, invoices, daily logs, and schedule events from source → target.
+// Used to reconcile a job the sync spawned from a daily log with the separate
+// job that holds its estimate (name-mismatch duplicate). If the target has no
+// client, it adopts the source's so pricing/grouping stays correct.
+export async function mergeJobInto(sourceJobId: string, targetJobId: string): Promise<void> {
+  if (sourceJobId === targetJobId) return
+  const [tgt, src] = await Promise.all([
+    supabase.from('jobs').select('client_id').eq('id', targetJobId).single(),
+    supabase.from('jobs').select('client_id').eq('id', sourceJobId).single(),
+  ])
+  if (tgt.error) throw tgt.error
+  if (src.error) throw src.error
+  if (!tgt.data.client_id && src.data.client_id) {
+    const { error } = await supabase
+      .from('jobs')
+      .update({ client_id: src.data.client_id })
+      .eq('id', targetJobId)
+    if (error) throw error
+  }
+  const moves = await Promise.all([
+    supabase.from('estimates').update({ job_id: targetJobId }).eq('job_id', sourceJobId),
+    supabase.from('invoices').update({ job_id: targetJobId }).eq('job_id', sourceJobId),
+    supabase.from('daily_logs').update({ job_id: targetJobId }).eq('job_id', sourceJobId),
+    supabase.from('schedule_events').update({ job_id: targetJobId }).eq('job_id', sourceJobId),
+  ])
+  for (const r of moves) if (r.error) throw r.error
+  const { error } = await supabase.from('jobs').delete().eq('id', sourceJobId)
+  if (error) throw error
+}
+
 // ─────────────────────── Price Sheet tab (Phase 3) ───────────────────────
 
 export async function addPriceItem(

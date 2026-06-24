@@ -2,19 +2,29 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   deleteJobIfEmpty,
+  fetchAllEstimates,
   fetchJob,
   fetchJobEstimate,
   fetchJobLoggedItems,
   fetchPriceList,
+  mergeJobInto,
 } from '../lib/queries'
 import {
   computeJobProgress,
+  formatDate,
   formatMoney,
   formatPct,
   formatQty,
   type JobProgress,
 } from '../lib/progress'
-import type { Estimate, JobWithClient } from '../lib/types'
+import type { Estimate, EstimateFull, JobWithClient } from '../lib/types'
+
+function estTotal(est: EstimateFull): number {
+  return est.lines.reduce(
+    (s, l) => s + (l.amount != null ? Number(l.amount) : Number(l.quantity) * Number(l.rate)),
+    0,
+  )
+}
 import { ProgressBar } from '../components/ProgressBar'
 
 export function JobDetail() {
@@ -26,6 +36,14 @@ export function JobDetail() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [removing, setRemoving] = useState(false)
+  const [reloadKey, setReloadKey] = useState(0)
+  const reload = () => setReloadKey((k) => k + 1)
+
+  // Link-an-estimate (merge a name-mismatched duplicate job into this one).
+  const [linking, setLinking] = useState(false)
+  const [allEstimates, setAllEstimates] = useState<EstimateFull[] | null>(null)
+  const [selectedEstId, setSelectedEstId] = useState('')
+  const [merging, setMerging] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -51,7 +69,40 @@ export function JobDetail() {
     return () => {
       cancelled = true
     }
-  }, [id])
+  }, [id, reloadKey])
+
+  async function openLinker() {
+    setLinking(true)
+    if (!allEstimates) {
+      try {
+        setAllEstimates(await fetchAllEstimates())
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e))
+      }
+    }
+  }
+
+  async function linkEstimate() {
+    if (!id || !selectedEstId || !allEstimates) return
+    const est = allEstimates.find((e) => e.id === selectedEstId)
+    if (!est) return
+    if (!window.confirm(
+      `Link Est #${est.estimate_number ?? '—'} (${est.job?.name ?? '—'}) to "${job!.name}"? ` +
+        `Its estimate, invoices, and any logs merge into this job and the duplicate job is removed.`,
+    )) return
+    setMerging(true)
+    try {
+      await mergeJobInto(est.job_id, id) // move the estimate's job INTO this one
+      setLinking(false)
+      setSelectedEstId('')
+      setAllEstimates(null) // force a fresh list next time
+      reload()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setMerging(false)
+    }
+  }
 
   if (loading) return <div className="page"><p className="muted">Loading job…</p></div>
   if (error) return <div className="page"><p className="error-text">{error}</p></div>
@@ -140,7 +191,55 @@ export function JobDetail() {
       ) : (
         <div className="empty-card">
           <p className="label">No estimate on file</p>
-          <p>Showing logged field work only. The bid baseline will appear once an estimate is imported for this job.</p>
+          <p>Showing logged field work only. If this job has a bid under a different name (the sync can split a logged job from its estimate), link it here.</p>
+          {!linking ? (
+            <div className="bill-action-row">
+              <button type="button" className="btn-ghost" onClick={() => void openLinker()}>
+                Link an estimate
+              </button>
+            </div>
+          ) : allEstimates == null ? (
+            <p className="muted">Loading estimates…</p>
+          ) : (
+            <div className="edit-items">
+              <label className="filter">
+                <span className="label">Pick the bid for this job</span>
+                <select value={selectedEstId} onChange={(e) => setSelectedEstId(e.target.value)}>
+                  <option value="">— choose an estimate —</option>
+                  {allEstimates
+                    .filter((e) => e.job_id !== id && e.status !== 'archived')
+                    .map((e) => (
+                      <option key={e.id} value={e.id}>
+                        Est #{e.estimate_number ?? '—'} · {e.job?.name ?? '—'}
+                        {e.job?.client?.name ? ` · ${e.job.client.name}` : ''} · {formatMoney(estTotal(e))}
+                        {e.estimate_date ? ` · ${formatDate(e.estimate_date)}` : ''}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <div className="edit-actions">
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={!selectedEstId || merging}
+                  onClick={() => void linkEstimate()}
+                >
+                  {merging ? 'Linking…' : 'Link & merge'}
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  disabled={merging}
+                  onClick={() => {
+                    setLinking(false)
+                    setSelectedEstId('')
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
