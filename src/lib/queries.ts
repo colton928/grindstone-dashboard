@@ -112,6 +112,18 @@ export async function fetchClients(): Promise<Client[]> {
   return (data ?? []) as Client[]
 }
 
+// Create a brand-new client inline (the "+ New client" option when bidding a job
+// for a customer not yet in the system). New clients carry no price rules yet.
+export async function createClient(name: string): Promise<Client> {
+  const { data, error } = await supabase
+    .from('clients')
+    .insert({ name })
+    .select('*')
+    .single()
+  if (error) throw error
+  return data as Client
+}
+
 // Every daily report with its job/client and line items, newest first.
 export async function fetchAllDailyLogs(): Promise<DailyLogFull[]> {
   const { data, error } = await supabase

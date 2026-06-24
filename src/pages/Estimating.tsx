@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
+  createClient,
   createEstimate,
   createJob,
   deleteEstimate,
@@ -56,6 +57,7 @@ export function Estimating() {
   const [creating, setCreating] = useState(false)
   const [clientFilter, setClientFilter] = useState<string>('') // '' = all clients
   const [showArchived, setShowArchived] = useState(false)
+  const [draftsOnly, setDraftsOnly] = useState(false) // drafts stat toggles this filter
   const [search, setSearch] = useState('')
 
   async function load() {
@@ -107,11 +109,13 @@ export function Estimating() {
   const archivedCount = estimates.filter((e) => e.status === 'archived').length
   const clientNames = [...new Set(estimates.map((e) => e.job?.client?.name).filter(Boolean))].sort() as string[]
 
-  // Visible list: hide archived unless toggled on, apply the client filter, and
-  // sort by client then job so bids group together (43+ estimates now).
+  // Visible list: hide archived unless toggled on, optionally drafts-only (drafts
+  // stat acts as a filter), apply the client filter, and sort most-recent first
+  // (newest estimate date at the top, newest est # breaking ties).
   const q = search.trim().toLowerCase()
   const visible = estimates
     .filter((e) => (showArchived ? e.status === 'archived' : e.status !== 'archived'))
+    .filter((e) => !draftsOnly || e.status === 'draft')
     .filter((e) => !clientFilter || e.job?.client?.name === clientFilter)
     .filter(
       (e) =>
@@ -122,8 +126,8 @@ export function Estimating() {
     )
     .sort(
       (a, b) =>
-        (a.job?.client?.name ?? '').localeCompare(b.job?.client?.name ?? '') ||
-        (a.job?.name ?? '').localeCompare(b.job?.name ?? ''),
+        (b.estimate_date ?? '').localeCompare(a.estimate_date ?? '') ||
+        (Number(b.estimate_number) || 0) - (Number(a.estimate_number) || 0),
     )
 
   const drafts = estimates.filter((e) => e.status === 'draft')
@@ -144,10 +148,18 @@ export function Estimating() {
           <span className="stat-value">{estimates.length}</span>
           <span className="label">estimates</span>
         </div>
-        <div className="stat">
+        <button
+          type="button"
+          className={`stat stat-toggle${draftsOnly ? ' stat-toggle-active' : ''}`}
+          onClick={() => {
+            setShowArchived(false)
+            setDraftsOnly((v) => !v)
+          }}
+          title="Show only draft estimates"
+        >
           <span className="stat-value stat-accent">{drafts.length}</span>
-          <span className="label">drafts</span>
-        </div>
+          <span className="label">drafts{draftsOnly ? ' ✓' : ''}</span>
+        </button>
         <div className="stat">
           <span className="stat-value">{sent.length}</span>
           <span className="label">sent</span>
@@ -165,7 +177,7 @@ export function Estimating() {
       </div>
 
       <div className="bill-overview-head">
-        <h2>{showArchived ? 'Archived bids' : 'Estimate history'}</h2>
+        <h2>{showArchived ? 'Archived bids' : draftsOnly ? 'Draft estimates' : 'Estimate history'}</h2>
         <div className="est-filters">
           <label className="filter">
             <span className="label">Search</span>
@@ -310,6 +322,7 @@ function NewEstimateEditor({
   // client is chosen separately so its pricing rules (e.g. Noland) auto-apply.
   const [jobName, setJobName] = useState('')
   const [clientId, setClientId] = useState<string>('')
+  const [newClientName, setNewClientName] = useState('') // used when clientId === '__new__'
   const [estNumber, setEstNumber] = useState(() => nextEstimateNumber(existingNumbers))
   const [estDate, setEstDate] = useState(today())
   const [notes, setNotes] = useState('')
@@ -329,6 +342,11 @@ function NewEstimateEditor({
     setLines((p) => p.map((l, idx) => (idx === i ? { ...l, ...patch } : l)))
   const removeLine = (i: number) => setLines((p) => p.filter((_, idx) => idx !== i))
 
+  // Customer-facing description: append the client-rule tag (e.g. "(includes
+  // shading)" for Noland) so the baked-in add-on shows on the line + the PDF.
+  const seedDescription = (name: string, lineLabel: string | null) =>
+    lineLabel ? `${name} (${lineLabel})` : name
+
   const addLine = () => {
     const p = priceList[0]
     if (!p) {
@@ -340,7 +358,7 @@ function NewEstimateEditor({
       ...prev,
       {
         product_id: p.id,
-        description: p.name,
+        description: seedDescription(p.name, seeded.lineLabel),
         unit: p.unit,
         quantity: '0',
         rate: String(seeded.rate),
@@ -358,7 +376,7 @@ function NewEstimateEditor({
     const seeded = seedRate(p, jobRules)
     updateLine(i, {
       product_id: p.id,
-      description: p.name,
+      description: seedDescription(p.name, seeded.lineLabel),
       unit: p.unit,
       rate: String(seeded.rate),
       adjustment_note: seeded.adjustment ? seeded.note : null,
@@ -371,6 +389,10 @@ function NewEstimateEditor({
     if (saving || savedRef.current) return
     if (!jobName.trim()) {
       setErr('Enter a job name for this estimate.')
+      return
+    }
+    if (clientId === '__new__' && !newClientName.trim()) {
+      setErr('Enter the new client’s name (or pick an existing client).')
       return
     }
     setSaving(true)
@@ -395,10 +417,18 @@ function NewEstimateEditor({
     }
 
     // Always a new job — create it first, then attach the estimate to it.
+    // If the user chose "+ New client", create that client up front.
     let id: string
     let jobId: string
+    let resolvedClient: { id: string; name: string } | null = client
+      ? { id: client.id, name: client.name }
+      : null
     try {
-      const newJob = await createJob({ name: jobName.trim(), client_id: clientId || null })
+      if (clientId === '__new__') {
+        const nc = await createClient(newClientName.trim())
+        resolvedClient = { id: nc.id, name: nc.name }
+      }
+      const newJob = await createJob({ name: jobName.trim(), client_id: resolvedClient?.id ?? null })
       jobId = newJob.id
       id = await createEstimate(
         {
@@ -430,7 +460,7 @@ function NewEstimateEditor({
             job: {
               id: jobId,
               name: jobName.trim(),
-              client: client ? { id: client.id, name: client.name } : null,
+              client: resolvedClient,
             },
             lines: payload.map((l, idx) => ({
               id: `tmp-${idx}`,
@@ -480,8 +510,21 @@ function NewEstimateEditor({
             {clients.map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
+            <option value="__new__">+ New client…</option>
           </select>
         </label>
+        {clientId === '__new__' && (
+          <label className="filter">
+            <span className="label">New client name</span>
+            <input
+              type="text"
+              value={newClientName}
+              placeholder="Client name"
+              autoFocus
+              onChange={(e) => setNewClientName(e.target.value)}
+            />
+          </label>
+        )}
 
         <div className="edit-grid">
           <label className="filter">

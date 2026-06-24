@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   addDailyLogItem,
+  addPriceItem,
   deleteDailyLog,
   deleteDailyLogItem,
   fetchAllDailyLogs,
@@ -100,6 +101,18 @@ export function DailyLog() {
 
   const hasFilter = !!(fJob || fClient || fProduct || fFrom || fTo || fReview)
 
+  // Add a brand-new work type (price_list product) on the fly while editing a
+  // report — for work the crew did that isn't in the price sheet yet. Rate seeds
+  // at $0 (set it later in Price Sheet); the point here is logging the quantity.
+  // NOTE: this only adds it to the dashboard's price list — the field Daily Report
+  // app reads work types from the Google Sheet, so reflecting it there is the
+  // Phase-5 cutover item (parallel-run: don't touch the daily app yet).
+  async function createWorkType(name: string, unit: string): Promise<PriceListItem> {
+    const item = await addPriceItem({ name, category: null, unit: unit || 'EA', default_rate: 0 })
+    setPriceList((prev) => [...prev, item])
+    return item
+  }
+
   async function markReviewed(id: string, reviewed: boolean) {
     await setDailyLogReviewed(id, reviewed)
     window.dispatchEvent(new Event('logs-reviewed')) // refresh the tab badge
@@ -189,6 +202,7 @@ export function DailyLog() {
                 key={log.id}
                 log={log}
                 priceList={priceList}
+                onCreateWorkType={createWorkType}
                 onCancel={() => setEditingId(null)}
                 onSaved={async () => {
                   setEditingId(null)
@@ -290,11 +304,13 @@ interface DraftItem {
 function LogEditor({
   log,
   priceList,
+  onCreateWorkType,
   onCancel,
   onSaved,
 }: {
   log: DailyLogFull
   priceList: PriceListItem[]
+  onCreateWorkType: (name: string, unit: string) => Promise<PriceListItem>
   onCancel: () => void
   onSaved: () => void | Promise<void>
 }) {
@@ -314,6 +330,29 @@ function LogEditor({
   const [removedIds, setRemovedIds] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+
+  // Inline "new work type" mini-form — creates a price_list product on the fly,
+  // then drops it in as a new work item on this report.
+  const [ntOpen, setNtOpen] = useState(false)
+  const [ntName, setNtName] = useState('')
+  const [ntUnit, setNtUnit] = useState('EA')
+
+  async function addNewType() {
+    if (!ntName.trim()) {
+      setErr('Enter a name for the new work type.')
+      return
+    }
+    try {
+      const p = await onCreateWorkType(ntName.trim(), ntUnit.trim() || 'EA')
+      setItems((prev) => [...prev, { product_id: p.id, quantity: '0' }])
+      setNtName('')
+      setNtUnit('EA')
+      setNtOpen(false)
+      setErr(null)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e))
+    }
+  }
 
   const updateItem = (idx: number, patch: Partial<DraftItem>) =>
     setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)))
@@ -435,9 +474,36 @@ function LogEditor({
             </button>
           </div>
         ))}
-        <button type="button" className="btn-ghost" onClick={addItem}>
-          + Add work item
-        </button>
+        <div className="edit-actions">
+          <button type="button" className="btn-ghost" onClick={addItem}>
+            + Add work item
+          </button>
+          <button type="button" className="btn-ghost" onClick={() => setNtOpen((v) => !v)}>
+            {ntOpen ? 'Cancel new type' : '+ New work type'}
+          </button>
+        </div>
+        {ntOpen && (
+          <div className="edit-item">
+            <input
+              type="text"
+              placeholder="New work type name"
+              value={ntName}
+              autoFocus
+              onChange={(e) => setNtName(e.target.value)}
+            />
+            <input
+              type="text"
+              className="edit-qty"
+              placeholder="unit"
+              aria-label="unit"
+              value={ntUnit}
+              onChange={(e) => setNtUnit(e.target.value)}
+            />
+            <button type="button" className="btn-ghost" onClick={() => void addNewType()}>
+              Add
+            </button>
+          </div>
+        )}
       </div>
 
       <label className="filter">

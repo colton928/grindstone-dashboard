@@ -220,6 +220,20 @@
 .stat-warn {
   color: var(--warn);
 }
+/* A stat that doubles as a filter toggle (e.g. the drafts box). */
+.stat-toggle {
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.stat-toggle:hover {
+  border-color: var(--accent);
+}
+.stat-toggle-active {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
 
 /* ───────────────────────── Job cards ───────────────────────── */
 .job-grid {

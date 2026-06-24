@@ -54,6 +54,7 @@ export function Billing() {
   const [editInvoiceId, setEditInvoiceId] = useState<string | null>(null)
   const [clientFilter, setClientFilter] = useState<string>('') // '' = all clients
   const [search, setSearch] = useState('')
+  const [draftsOnly, setDraftsOnly] = useState(false) // drafts stat toggles this filter
 
   async function load() {
     try {
@@ -184,6 +185,17 @@ export function Billing() {
           <span className="stat-value">{invoices.length}</span>
           <span className="label">invoices</span>
         </div>
+        <button
+          type="button"
+          className={`stat stat-toggle${draftsOnly ? ' stat-toggle-active' : ''}`}
+          onClick={() => setDraftsOnly((v) => !v)}
+          title="Show only draft invoices"
+        >
+          <span className="stat-value stat-accent">
+            {invoices.filter((i) => i.status === 'draft').length}
+          </span>
+          <span className="label">drafts{draftsOnly ? ' ✓' : ''}</span>
+        </button>
       </div>
 
       <div className="bill-overview-head">
@@ -240,19 +252,21 @@ export function Billing() {
         </div>
       )}
 
-      <h2>Invoice history</h2>
+      <h2>{draftsOnly ? 'Draft invoices' : 'Invoice history'}</h2>
       {(() => {
-        const shown = invoices.filter(
-          (inv) =>
-            !q ||
-            (inv.job?.name ?? '').toLowerCase().includes(q) ||
-            (inv.job?.client?.name ?? '').toLowerCase().includes(q) ||
-            (inv.bill_number ?? '').toLowerCase().includes(q),
-        )
+        const shown = invoices
+          .filter((inv) => !draftsOnly || inv.status === 'draft')
+          .filter(
+            (inv) =>
+              !q ||
+              (inv.job?.name ?? '').toLowerCase().includes(q) ||
+              (inv.job?.client?.name ?? '').toLowerCase().includes(q) ||
+              (inv.bill_number ?? '').toLowerCase().includes(q),
+          )
         return invoices.length === 0 ? (
         <div className="empty-card"><p className="label">No invoices yet.</p></div>
       ) : shown.length === 0 ? (
-        <div className="empty-card"><p className="label">No invoices match “{search}”.</p></div>
+        <div className="empty-card"><p className="label">{draftsOnly ? 'No draft invoices.' : `No invoices match “${search}”.`}</p></div>
       ) : (
         <div className="lines">
           {shown.map((inv) => {
