@@ -815,3 +815,173 @@
   gap: 8px;
   color: var(--text-soft);
 }
+
+/* ───────────────────────── Schedule tab (Phase 4) ───────────────────────── */
+.sched-day {
+  margin-top: 18px;
+}
+.sched-day-label {
+  font-family: var(--heading);
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-soft);
+  margin: 0 0 8px;
+}
+.event-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.event-card-canceled {
+  opacity: 0.6;
+}
+.event-card-canceled .event-title {
+  text-decoration: line-through;
+}
+.event-card-done {
+  border-left: 3px solid var(--good);
+}
+.event-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.event-time {
+  font-weight: 600;
+  color: var(--text-h);
+  font-size: 14px;
+}
+.event-title {
+  font-weight: 600;
+  color: var(--text-h);
+  font-size: 16px;
+  line-height: 1.25;
+}
+.event-meta a {
+  color: var(--accent);
+}
+.event-notes {
+  margin: 2px 0 0;
+}
+.event-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+/* Kind chips — one per Google Calendar lane. */
+.event-kind {
+  font-family: var(--cond);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.event-kind-job {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+.event-kind-concrete {
+  background: rgba(46, 120, 200, 0.15);
+  color: #2e78c8;
+}
+.event-kind-billing {
+  background: var(--good-bg);
+  color: var(--good);
+}
+.event-kind-bid {
+  background: rgba(140, 90, 200, 0.16);
+  color: #8c5ac8;
+}
+.event-kind-other {
+  background: var(--surface-2);
+  color: var(--text-soft);
+  border: 1px solid var(--border);
+}
+
+.sched-form {
+  border: 1px solid var(--accent);
+}
+.sched-form input,
+.sched-form textarea,
+.sched-form select {
+  width: 100%;
+}
+
+.sched-concrete-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  border-radius: 10px;
+  background: rgba(46, 120, 200, 0.12);
+  border: 1px solid #2e78c8;
+  color: var(--text-h);
+}
+.sched-concrete-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* Home "Up next" snapshot */
+.snap {
+  margin: 18px 0 6px;
+}
+.snap-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.snap-head h2 {
+  font-family: var(--heading);
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-soft);
+  margin: 0;
+}
+.snap-all {
+  color: var(--accent);
+}
+.snap-empty {
+  margin: 0;
+}
+.snap-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.snap-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 9px 12px;
+}
+.snap-when {
+  min-width: 74px;
+  font-weight: 600;
+  color: var(--text-h);
+  font-size: 13px;
+}
+.snap-title {
+  color: var(--text);
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

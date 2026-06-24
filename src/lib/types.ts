@@ -140,6 +140,36 @@ export interface InvoiceFull extends Invoice {
   lines: InvoiceLineItem[]
 }
 
+// ─────────────────────── Schedule tab (Phase 4) ───────────────────────
+// `kind` maps to Colton's 4 Google Calendars (jobs / concrete / billing / bids),
+// plus "other". google_event_id is reserved for the Calendar two-way sync.
+export type ScheduleKind = 'job' | 'concrete' | 'billing' | 'bid' | 'other'
+export type ScheduleStatus = 'scheduled' | 'done' | 'canceled'
+
+export interface ScheduleEvent {
+  id: string
+  job_id: string | null
+  title: string
+  kind: ScheduleKind
+  event_date: string // YYYY-MM-DD
+  end_date: string | null // null = single day
+  start_time: string | null // 'HH:MM' or null (all-day)
+  location: string | null
+  notes: string | null
+  status: ScheduleStatus
+  google_event_id: string | null
+  created_at?: string
+  updated_at?: string
+}
+
+export interface ScheduleEventFull extends ScheduleEvent {
+  job: {
+    id: string
+    name: string
+    client: Pick<Client, 'id' | 'name'> | null
+  } | null
+}
+
 // An estimate with its job/client and line items, for the Estimating tab.
 export interface EstimateFull extends Estimate {
   job: {

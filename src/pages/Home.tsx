@@ -5,10 +5,29 @@ import {
   fetchJobEstimate,
   fetchJobLoggedItems,
   fetchPriceList,
+  fetchUpcomingSchedule,
 } from '../lib/queries'
-import { computeJobProgress, formatMoney, formatPct } from '../lib/progress'
-import type { JobWithClient } from '../lib/types'
+import { computeJobProgress, formatDate, formatMoney, formatPct } from '../lib/progress'
+import type { JobWithClient, ScheduleEventFull, ScheduleKind } from '../lib/types'
 import { ProgressBar } from '../components/ProgressBar'
+
+const KIND_LABEL: Record<ScheduleKind, string> = {
+  job: 'Job',
+  concrete: 'Concrete',
+  billing: 'Billing',
+  bid: 'Bid',
+  other: 'Other',
+}
+
+// Friendly date for the snapshot: Today / Tomorrow / MM-DD-YYYY.
+function snapDate(iso: string): string {
+  const today = new Date().toISOString().slice(0, 10)
+  if (iso.slice(0, 10) === today) return 'Today'
+  const t = new Date(today + 'T00:00:00')
+  t.setDate(t.getDate() + 1)
+  if (iso.slice(0, 10) === t.toISOString().slice(0, 10)) return 'Tomorrow'
+  return formatDate(iso)
+}
 
 interface JobSummary {
   job: JobWithClient
@@ -21,6 +40,7 @@ interface JobSummary {
 
 export function Home() {
   const [summaries, setSummaries] = useState<JobSummary[]>([])
+  const [upcoming, setUpcoming] = useState<ScheduleEventFull[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -28,7 +48,12 @@ export function Home() {
     let cancelled = false
     ;(async () => {
       try {
-        const [jobs, priceList] = await Promise.all([fetchActiveJobs(), fetchPriceList()])
+        const [jobs, priceList, sched] = await Promise.all([
+          fetchActiveJobs(),
+          fetchPriceList(),
+          fetchUpcomingSchedule(5),
+        ])
+        if (!cancelled) setUpcoming(sched)
         const result = await Promise.all(
           jobs.map(async (job): Promise<JobSummary> => {
             const [{ lineItems }, { logs, items }] = await Promise.all([
@@ -76,6 +101,26 @@ export function Home() {
         <Stat label="Built to date" value={formatMoney(totalBuilt)} accent />
         <Stat label="Overall" value={formatPct(overall)} />
         <Stat label="Needs billing" value={String(billingCount)} warn={billingCount > 0} />
+      </div>
+
+      <div className="snap">
+        <div className="snap-head">
+          <h2>Up next</h2>
+          <Link to="/schedule" className="label snap-all">Schedule →</Link>
+        </div>
+        {upcoming.length === 0 ? (
+          <p className="label snap-empty">Nothing scheduled. Add jobs &amp; concrete orders in Schedule.</p>
+        ) : (
+          <div className="snap-list">
+            {upcoming.map((ev) => (
+              <Link key={ev.id} to="/schedule" className="snap-row">
+                <span className="snap-when num">{snapDate(ev.event_date)}</span>
+                <span className={`event-kind event-kind-${ev.kind}`}>{KIND_LABEL[ev.kind]}</span>
+                <span className="snap-title">{ev.title}</span>
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
 
       {summaries.length === 0 && (

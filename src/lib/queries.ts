@@ -14,6 +14,10 @@ import type {
   JobStatus,
   JobWithClient,
   PriceListItem,
+  ScheduleEvent,
+  ScheduleEventFull,
+  ScheduleKind,
+  ScheduleStatus,
 } from './types'
 
 // All reads run under the signed-in user (RLS = authenticated only).
@@ -448,5 +452,86 @@ export async function updatePriceItem(id: string, patch: PriceItemPatch): Promis
     .from('price_list')
     .update({ ...patch, updated_at: new Date().toISOString() })
     .eq('id', id)
+  if (error) throw error
+}
+
+// ─────────────────────── Schedule tab (Phase 4) ───────────────────────
+
+// Every schedule event with its job/client, soonest first.
+export async function fetchScheduleEvents(): Promise<ScheduleEventFull[]> {
+  const { data, error } = await supabase
+    .from('schedule_events')
+    .select('*, job:jobs(id, name, client:clients(id, name))')
+    .order('event_date', { ascending: true })
+    .order('start_time', { ascending: true, nullsFirst: true })
+  if (error) throw error
+  return (data ?? []) as ScheduleEventFull[]
+}
+
+// Upcoming (today onward, not canceled) for the Home snapshot.
+export async function fetchUpcomingSchedule(limit = 6): Promise<ScheduleEventFull[]> {
+  const today = new Date().toISOString().slice(0, 10)
+  const { data, error } = await supabase
+    .from('schedule_events')
+    .select('*, job:jobs(id, name, client:clients(id, name))')
+    .neq('status', 'canceled')
+    .or(`event_date.gte.${today},end_date.gte.${today}`)
+    .order('event_date', { ascending: true })
+    .order('start_time', { ascending: true, nullsFirst: true })
+    .limit(limit)
+  if (error) throw error
+  return (data ?? []) as ScheduleEventFull[]
+}
+
+export interface NewScheduleEvent {
+  job_id: string | null
+  title: string
+  kind: ScheduleKind
+  event_date: string
+  end_date: string | null
+  start_time: string | null
+  location: string | null
+  notes: string | null
+}
+
+export async function createScheduleEvent(input: NewScheduleEvent): Promise<string> {
+  const { data, error } = await supabase
+    .from('schedule_events')
+    .insert(input)
+    .select('id')
+    .single()
+  if (error) throw error
+  return data.id as string
+}
+
+export type ScheduleEventPatch = Partial<
+  Pick<
+    ScheduleEvent,
+    | 'job_id'
+    | 'title'
+    | 'kind'
+    | 'event_date'
+    | 'end_date'
+    | 'start_time'
+    | 'location'
+    | 'notes'
+    | 'status'
+  >
+>
+
+export async function updateScheduleEvent(id: string, patch: ScheduleEventPatch): Promise<void> {
+  const { error } = await supabase
+    .from('schedule_events')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function setScheduleEventStatus(id: string, status: ScheduleStatus): Promise<void> {
+  await updateScheduleEvent(id, { status })
+}
+
+export async function deleteScheduleEvent(id: string): Promise<void> {
+  const { error } = await supabase.from('schedule_events').delete().eq('id', id)
   if (error) throw error
 }

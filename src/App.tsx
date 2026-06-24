@@ -6,10 +6,10 @@ import { AppShell } from './components/AppShell'
 import { Home } from './pages/Home'
 import { JobDetail } from './pages/JobDetail'
 import { DailyLog } from './pages/DailyLog'
+import { Schedule } from './pages/Schedule'
 import { Billing } from './pages/Billing'
 import { Estimating } from './pages/Estimating'
 import { PriceSheet } from './pages/PriceSheet'
-import { ComingSoon } from './pages/ComingSoon'
 import './App.css'
 
 function App() {
@@ -59,7 +59,7 @@ function App() {
         <Route path="/" element={<Home />} />
         <Route path="/jobs/:id" element={<JobDetail />} />
         <Route path="/daily-log" element={<DailyLog />} />
-        <Route path="/schedule" element={<ComingSoon title="Schedule" phase={4} />} />
+        <Route path="/schedule" element={<Schedule />} />
         <Route path="/billing" element={<Billing />} />
         <Route path="/estimating" element={<Estimating />} />
         <Route path="/price-sheet" element={<PriceSheet />} />
