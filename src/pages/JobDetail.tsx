@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
+  deleteJobIfEmpty,
   fetchJob,
   fetchJobEstimate,
   fetchJobLoggedItems,
@@ -18,11 +19,13 @@ import { ProgressBar } from '../components/ProgressBar'
 
 export function JobDetail() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const [job, setJob] = useState<JobWithClient | null>(null)
   const [estimate, setEstimate] = useState<Estimate | null>(null)
   const [progress, setProgress] = useState<JobProgress | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [removing, setRemoving] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -53,6 +56,29 @@ export function JobDetail() {
   if (loading) return <div className="page"><p className="muted">Loading job…</p></div>
   if (error) return <div className="page"><p className="error-text">{error}</p></div>
   if (!job || !progress) return <div className="page"><p className="muted">Job not found.</p></div>
+
+  // A job is an empty shell (e.g. a deleted/test bid) when it has no estimate and
+  // no logged field work. Such jobs can be removed; deleteJobIfEmpty re-checks
+  // server-side (estimates/logs/invoices) so a real job is never deleted.
+  const isEmpty = !progress.hasEstimate && progress.extras.length === 0
+
+  async function removeJob() {
+    if (!id) return
+    if (!window.confirm(`Remove "${job!.name}"? This empty job will be deleted.`)) return
+    setRemoving(true)
+    try {
+      const deleted = await deleteJobIfEmpty(id)
+      if (deleted) {
+        navigate('/')
+      } else {
+        setError('This job has logs, invoices, or an estimate — it wasn’t deleted.')
+        setRemoving(false)
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+      setRemoving(false)
+    }
+  }
 
   return (
     <div className="page">
@@ -115,6 +141,19 @@ export function JobDetail() {
         <div className="empty-card">
           <p className="label">No estimate on file</p>
           <p>Showing logged field work only. The bid baseline will appear once an estimate is imported for this job.</p>
+        </div>
+      )}
+
+      {isEmpty && (
+        <div className="bill-action-row">
+          <button
+            type="button"
+            className="btn-ghost edit-delete"
+            disabled={removing}
+            onClick={() => void removeJob()}
+          >
+            {removing ? 'Removing…' : 'Remove empty job'}
+          </button>
         </div>
       )}
 

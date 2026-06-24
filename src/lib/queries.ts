@@ -440,9 +440,37 @@ export async function updateEstimateStatus(id: string, status: EstimateStatus): 
 }
 
 export async function deleteEstimate(id: string): Promise<void> {
+  // Note the job this estimate belongs to before deleting it.
+  const { data: est, error: e0 } = await supabase
+    .from('estimates')
+    .select('job_id')
+    .eq('id', id)
+    .single()
+  if (e0) throw e0
   // estimate_line_items cascade on delete.
   const { error } = await supabase.from('estimates').delete().eq('id', id)
   if (error) throw error
+  // A New-estimate always spins up a fresh job. If deleting this estimate leaves
+  // that job empty (no other estimates, no daily logs, no invoices), it was just
+  // a shell for this bid — remove it so deleted/test bids don't linger as "active
+  // jobs" on Home. Real jobs (with logs/invoices/other estimates) are never touched.
+  const jobId = (est as { job_id: string | null } | null)?.job_id
+  if (jobId) await deleteJobIfEmpty(jobId)
+}
+
+// Delete a job only if nothing references it (no estimates, daily logs, or
+// invoices). Safe no-op otherwise.
+export async function deleteJobIfEmpty(jobId: string): Promise<boolean> {
+  const [estRes, logRes, invRes] = await Promise.all([
+    supabase.from('estimates').select('id', { count: 'exact', head: true }).eq('job_id', jobId),
+    supabase.from('daily_logs').select('id', { count: 'exact', head: true }).eq('job_id', jobId),
+    supabase.from('invoices').select('id', { count: 'exact', head: true }).eq('job_id', jobId),
+  ])
+  for (const r of [estRes, logRes, invRes]) if (r.error) throw r.error
+  if ((estRes.count ?? 0) > 0 || (logRes.count ?? 0) > 0 || (invRes.count ?? 0) > 0) return false
+  const { error } = await supabase.from('jobs').delete().eq('id', jobId)
+  if (error) throw error
+  return true
 }
 
 // ─────────────────────── Price Sheet tab (Phase 3) ───────────────────────
