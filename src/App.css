@@ -761,6 +761,9 @@
   border-radius: 8px;
   background: var(--surface-2);
 }
+.bill-line-desc {
+  width: 100%;
+}
 .bill-line-nums {
   display: flex;
   align-items: center;

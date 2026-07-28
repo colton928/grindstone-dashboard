@@ -602,6 +602,16 @@ function EstimateEditor({
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>
+              {l.product_id == null && (
+                <input
+                  type="text"
+                  className="bill-line-desc"
+                  aria-label="custom line description"
+                  placeholder="Describe this item (e.g. Pump truck, Rebar)"
+                  value={l.description}
+                  onChange={(e) => updateLine(i, { description: e.target.value })}
+                />
+              )}
               <div className="bill-line-nums">
                 <input
                   type="number"
