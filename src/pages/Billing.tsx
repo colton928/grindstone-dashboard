@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
+  addPriceItem,
   createInvoice,
   deleteInvoice,
   fetchAllInvoices,
@@ -12,6 +13,7 @@ import {
   type BillingRawData,
   type NewInvoiceLine,
 } from '../lib/queries'
+import { LineItemPicker } from '../components/LineItemPicker'
 import { computeJobBilling, type JobBilling } from '../lib/billing'
 import { formatDate, formatMoney, formatQty } from '../lib/progress'
 import type {
@@ -561,25 +563,49 @@ function DraftInvoiceEditor({
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const savedRef = useRef(false) // guards against double-submit creating duplicates
+  // Price items created on the fly from the line picker — merged into the list
+  // so they show up in search immediately (a full reload re-reads them on save).
+  const [extraItems, setExtraItems] = useState<PriceListItem[]>([])
+  const pickList = useMemo(() => [...priceList, ...extraItems], [priceList, extraItems])
 
   const updateLine = (i: number, patch: Partial<DraftLine>) =>
     setLines((p) => p.map((l, idx) => (idx === i ? { ...l, ...patch } : l)))
   const removeLine = (i: number) => setLines((p) => p.filter((_, idx) => idx !== i))
-  const addLine = () => {
-    const p = priceList[0]
+  // New lines start blank — type in the picker to search the price sheet or
+  // enter a one-off.
+  const addLine = () =>
     setLines((prev) => [
       ...prev,
-      { product_id: p?.id ?? null, description: p?.name ?? '', unit: p?.unit ?? null, quantity: '0', rate: String(p?.default_rate ?? 0) },
+      { product_id: null, description: '', unit: null, quantity: '0', rate: '0' },
     ])
-  }
-  const onPickProduct = (i: number, productId: string) => {
-    const p = priceList.find((x) => x.id === productId)
+
+  const onSelectProduct = (i: number, p: PriceListItem) =>
     updateLine(i, {
-      product_id: productId || null,
-      description: p?.name ?? '',
-      unit: p?.unit ?? null,
-      rate: p ? String(p.default_rate) : '0',
+      product_id: p.id,
+      description: p.name,
+      unit: p.unit,
+      rate: String(p.default_rate),
     })
+
+  // Free-typed text = a one-off line: detach any product, keep the current rate.
+  const onFreeText = (i: number, text: string) =>
+    updateLine(i, { product_id: null, description: text })
+
+  // Add the typed name to the price sheet (using this line's rate/unit as its
+  // default), then attach it to the line.
+  const onCreateNew = async (i: number, name: string) => {
+    try {
+      const created = await addPriceItem({
+        name,
+        category: null,
+        unit: lines[i].unit || 'ea',
+        default_rate: Number(lines[i].rate) || 0,
+      })
+      setExtraItems((prev) => [...prev, created])
+      onSelectProduct(i, created)
+    } catch (e) {
+      setErr(errMsg(e))
+    }
   }
 
   const total = lines.reduce((s, l) => s + (Number(l.quantity) || 0) * (Number(l.rate) || 0), 0)
@@ -690,12 +716,14 @@ function DraftInvoiceEditor({
         {lines.length === 0 && <p className="muted">No lines — add one below.</p>}
         {lines.map((l, i) => (
           <div key={i} className="bill-line">
-            <select value={l.product_id ?? ''} onChange={(e) => onPickProduct(i, e.target.value)}>
-              <option value="">— custom —</option>
-              {priceList.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
+            <LineItemPicker
+              value={l.description}
+              linked={l.product_id != null}
+              priceList={pickList}
+              onSelectProduct={(p) => onSelectProduct(i, p)}
+              onFreeText={(text) => onFreeText(i, text)}
+              onCreateNew={(name) => void onCreateNew(i, name)}
+            />
             <div className="bill-line-nums">
               <input
                 type="number"

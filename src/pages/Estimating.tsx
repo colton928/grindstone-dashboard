@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
+  addPriceItem,
   createClient,
   createEstimate,
   createJob,
@@ -14,6 +15,7 @@ import {
   updateJob,
   type NewEstimateLine,
 } from '../lib/queries'
+import { LineItemPicker } from '../components/LineItemPicker'
 import { nextEstimateNumber, seedRate } from '../lib/estimate'
 import { formatDate, formatMoney } from '../lib/progress'
 import type {
@@ -365,6 +367,10 @@ function EstimateEditor({
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const savedRef = useRef(false)
+  // Price items created on the fly from the line picker — merged into the list
+  // so they show up in search immediately (a full reload re-reads them on save).
+  const [extraItems, setExtraItems] = useState<PriceListItem[]>([])
+  const pickList = useMemo(() => [...priceList, ...extraItems], [priceList, extraItems])
 
   const client = clients.find((c) => c.id === clientId) ?? null
   // Client rules for the chosen client (auto-applied when seeding lines).
@@ -382,32 +388,16 @@ function EstimateEditor({
   const seedDescription = (name: string, lineLabel: string | null) =>
     lineLabel ? `${name} (${lineLabel})` : name
 
-  const addLine = () => {
-    const p = priceList[0]
-    if (!p) {
-      setLines((prev) => [...prev, { product_id: null, description: '', unit: null, quantity: '0', rate: '0', adjustment_note: null }])
-      return
-    }
-    const seeded = seedRate(p, jobRules)
+  // New lines start blank — type in the picker to search the price sheet or
+  // enter a one-off.
+  const addLine = () =>
     setLines((prev) => [
       ...prev,
-      {
-        product_id: p.id,
-        description: seedDescription(p.name, seeded.lineLabel),
-        unit: p.unit,
-        quantity: '0',
-        rate: String(seeded.rate),
-        adjustment_note: seeded.adjustment ? seeded.note : null,
-      },
+      { product_id: null, description: '', unit: null, quantity: '0', rate: '0', adjustment_note: null },
     ])
-  }
 
-  const onPickProduct = (i: number, productId: string) => {
-    const p = priceList.find((x) => x.id === productId)
-    if (!p) {
-      updateLine(i, { product_id: null, description: '', unit: null, rate: '0', adjustment_note: null })
-      return
-    }
+  // Attach a price-sheet item to a line, seeding its rate from the client rules.
+  const onSelectProduct = (i: number, p: PriceListItem) => {
     const seeded = seedRate(p, jobRules)
     updateLine(i, {
       product_id: p.id,
@@ -416,6 +406,27 @@ function EstimateEditor({
       rate: String(seeded.rate),
       adjustment_note: seeded.adjustment ? seeded.note : null,
     })
+  }
+
+  // Free-typed text = a one-off line: detach any product, keep the current rate.
+  const onFreeText = (i: number, text: string) =>
+    updateLine(i, { product_id: null, description: text, adjustment_note: null })
+
+  // Add the typed name to the price sheet (using this line's rate/unit as its
+  // default), then attach it to the line.
+  const onCreateNew = async (i: number, name: string) => {
+    try {
+      const created = await addPriceItem({
+        name,
+        category: null,
+        unit: lines[i].unit || 'ea',
+        default_rate: Number(lines[i].rate) || 0,
+      })
+      setExtraItems((prev) => [...prev, created])
+      onSelectProduct(i, created)
+    } catch (e) {
+      setErr(errMsg(e))
+    }
   }
 
   const total = lines.reduce((s, l) => s + (Number(l.quantity) || 0) * (Number(l.rate) || 0), 0)
@@ -596,22 +607,14 @@ function EstimateEditor({
           {lines.length === 0 && <p className="muted">No lines yet — add one below.</p>}
           {lines.map((l, i) => (
             <div key={i} className="bill-line">
-              <select value={l.product_id ?? ''} onChange={(e) => onPickProduct(i, e.target.value)}>
-                <option value="">— custom —</option>
-                {priceList.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-              {l.product_id == null && (
-                <input
-                  type="text"
-                  className="bill-line-desc"
-                  aria-label="custom line description"
-                  placeholder="Describe this item (e.g. Pump truck, Rebar)"
-                  value={l.description}
-                  onChange={(e) => updateLine(i, { description: e.target.value })}
-                />
-              )}
+              <LineItemPicker
+                value={l.description}
+                linked={l.product_id != null}
+                priceList={pickList}
+                onSelectProduct={(p) => onSelectProduct(i, p)}
+                onFreeText={(text) => onFreeText(i, text)}
+                onCreateNew={(name) => void onCreateNew(i, name)}
+              />
               <div className="bill-line-nums">
                 <input
                   type="number"
