@@ -383,6 +383,17 @@ export async function createJob(job: {
   return data as JobWithClient
 }
 
+// Update an existing job's name and/or client (used when editing an estimate
+// whose job details changed). Changing the client does NOT re-price existing
+// estimate lines — their rates are locked; it only affects future seeding.
+export async function updateJob(
+  id: string,
+  patch: { name?: string; client_id?: string | null },
+): Promise<void> {
+  const { error } = await supabase.from('jobs').update(patch).eq('id', id)
+  if (error) throw error
+}
+
 export async function fetchClientPriceRules(): Promise<ClientPriceRule[]> {
   const { data, error } = await supabase.from('client_price_rules').select('*')
   if (error) throw error
@@ -446,6 +457,49 @@ export async function createEstimate(
 export async function updateEstimateStatus(id: string, status: EstimateStatus): Promise<void> {
   const { error } = await supabase.from('estimates').update({ status }).eq('id', id)
   if (error) throw error
+}
+
+// Update an estimate's header fields (used when editing an existing estimate).
+export async function updateEstimate(
+  id: string,
+  patch: {
+    estimate_number?: string | null
+    estimate_date?: string | null
+    notes?: string | null
+    status?: EstimateStatus
+  },
+): Promise<void> {
+  const { error } = await supabase.from('estimates').update(patch).eq('id', id)
+  if (error) throw error
+}
+
+// Replace all line items on an estimate (used when editing): clear the old ones,
+// then insert the edited set. Rates stay locked to whatever's saved here — the
+// live price list is never re-read. amount is a generated column (quantity*rate),
+// so it's never inserted.
+export async function replaceEstimateLines(
+  estimateId: string,
+  lines: NewEstimateLine[],
+): Promise<void> {
+  const { error: delErr } = await supabase
+    .from('estimate_line_items')
+    .delete()
+    .eq('estimate_id', estimateId)
+  if (delErr) throw delErr
+  if (lines.length) {
+    const rows = lines.map((l) => ({
+      estimate_id: estimateId,
+      product_id: l.product_id,
+      description: l.description,
+      unit: l.unit,
+      quantity: l.quantity,
+      rate: l.rate,
+      adjustment_note: l.adjustment_note,
+      sort_order: l.sort_order,
+    }))
+    const { error: lineErr } = await supabase.from('estimate_line_items').insert(rows)
+    if (lineErr) throw lineErr
+  }
 }
 
 export async function deleteEstimate(id: string): Promise<void> {

@@ -8,7 +8,10 @@ import {
   fetchClientPriceRules,
   fetchClients,
   fetchPriceList,
+  replaceEstimateLines,
+  updateEstimate,
   updateEstimateStatus,
+  updateJob,
   type NewEstimateLine,
 } from '../lib/queries'
 import { nextEstimateNumber, seedRate } from '../lib/estimate'
@@ -55,6 +58,7 @@ export function Estimating() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  const [editing, setEditing] = useState<EstimateFull | null>(null) // open estimate for editing
   const [clientFilter, setClientFilter] = useState<string>('') // '' = all clients
   const [showArchived, setShowArchived] = useState(false)
   const [draftsOnly, setDraftsOnly] = useState(false) // drafts stat toggles this filter
@@ -89,17 +93,22 @@ export function Estimating() {
   if (loading) return <div className="page"><p className="muted">Loading estimates…</p></div>
   if (error) return <div className="page"><p className="error-text">{error}</p></div>
 
-  if (creating) {
+  if (creating || editing) {
     return (
-      <NewEstimateEditor
+      <EstimateEditor
+        editing={editing}
         clients={clients}
         priceList={priceList.filter((p) => p.active)}
         rules={rules}
         existingNumbers={estimates.map((e) => e.estimate_number)}
         productName={productName}
-        onCancel={() => setCreating(false)}
+        onCancel={() => {
+          setCreating(false)
+          setEditing(null)
+        }}
         onSaved={async () => {
           setCreating(false)
+          setEditing(null)
           await load()
         }}
       />
@@ -235,6 +244,11 @@ export function Estimating() {
                 <button type="button" className="btn-ghost" onClick={() => void sharePdf(est, productName)}>
                   Send PDF
                 </button>
+                {est.status !== 'archived' && (
+                  <button type="button" className="btn-ghost" onClick={() => setEditing(est)}>
+                    Edit
+                  </button>
+                )}
                 {est.status === 'draft' && (
                   <button
                     type="button"
@@ -301,7 +315,8 @@ interface DraftLine {
   adjustment_note: string | null
 }
 
-function NewEstimateEditor({
+function EstimateEditor({
+  editing,
   clients,
   priceList,
   rules,
@@ -310,6 +325,7 @@ function NewEstimateEditor({
   onCancel,
   onSaved,
 }: {
+  editing: EstimateFull | null
   clients: Client[]
   priceList: PriceListItem[]
   rules: ClientPriceRule[]
@@ -318,15 +334,34 @@ function NewEstimateEditor({
   onCancel: () => void
   onSaved: () => void | Promise<void>
 }) {
-  // An estimate always starts a brand-new job — just type the job name. The
-  // client is chosen separately so its pricing rules (e.g. Noland) auto-apply.
-  const [jobName, setJobName] = useState('')
-  const [clientId, setClientId] = useState<string>('')
+  const isEdit = editing != null
+  // New estimates start a brand-new job (just type the job name). When editing,
+  // we prefill from the existing estimate and update it in place. The client is
+  // chosen separately so its pricing rules (e.g. Noland) auto-apply to new lines;
+  // existing lines keep their locked rates.
+  const [jobName, setJobName] = useState(editing?.job?.name ?? '')
+  const [clientId, setClientId] = useState<string>(editing?.job?.client?.id ?? '')
   const [newClientName, setNewClientName] = useState('') // used when clientId === '__new__'
-  const [estNumber, setEstNumber] = useState(() => nextEstimateNumber(existingNumbers))
-  const [estDate, setEstDate] = useState(today())
-  const [notes, setNotes] = useState('')
-  const [lines, setLines] = useState<DraftLine[]>([])
+  const [estNumber, setEstNumber] = useState(
+    () => editing?.estimate_number ?? nextEstimateNumber(existingNumbers),
+  )
+  const [estDate, setEstDate] = useState(editing?.estimate_date?.slice(0, 10) ?? today())
+  const [notes, setNotes] = useState(editing?.notes ?? '')
+  const [lines, setLines] = useState<DraftLine[]>(() =>
+    editing
+      ? editing.lines
+          .slice()
+          .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+          .map((l) => ({
+            product_id: l.product_id,
+            description: l.description ?? '',
+            unit: l.unit,
+            quantity: String(l.quantity),
+            rate: String(l.rate),
+            adjustment_note: l.adjustment_note,
+          }))
+      : [],
+  )
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const savedRef = useRef(false)
@@ -416,8 +451,7 @@ function NewEstimateEditor({
       return
     }
 
-    // Always a new job — create it first, then attach the estimate to it.
-    // If the user chose "+ New client", create that client up front.
+    // Resolve the client first (create it if the user chose "+ New client").
     let id: string
     let jobId: string
     let resolvedClient: { id: string; name: string } | null = client
@@ -428,18 +462,34 @@ function NewEstimateEditor({
         const nc = await createClient(newClientName.trim())
         resolvedClient = { id: nc.id, name: nc.name }
       }
-      const newJob = await createJob({ name: jobName.trim(), client_id: resolvedClient?.id ?? null })
-      jobId = newJob.id
-      id = await createEstimate(
-        {
-          job_id: jobId,
+      if (editing) {
+        // Editing in place: update the job details, the estimate header, and
+        // replace its line items. The estimate keeps its own locked rates.
+        jobId = editing.job_id
+        id = editing.id
+        await updateJob(jobId, { name: jobName.trim(), client_id: resolvedClient?.id ?? null })
+        await updateEstimate(id, {
           estimate_number: estNumber || null,
           estimate_date: estDate || today(),
           status,
           notes: notes || null,
-        },
-        payload,
-      )
+        })
+        await replaceEstimateLines(id, payload)
+      } else {
+        // New estimate always starts a fresh job — create it, then the estimate.
+        const newJob = await createJob({ name: jobName.trim(), client_id: resolvedClient?.id ?? null })
+        jobId = newJob.id
+        id = await createEstimate(
+          {
+            job_id: jobId,
+            estimate_number: estNumber || null,
+            estimate_date: estDate || today(),
+            status,
+            notes: notes || null,
+          },
+          payload,
+        )
+      }
       savedRef.current = true
     } catch (e) {
       setErr(errMsg(e))
@@ -489,8 +539,12 @@ function NewEstimateEditor({
     <div className="page">
       <button type="button" className="back-link label" onClick={onCancel}>← All estimates</button>
       <div className="job-detail-head">
-        <h1>New estimate</h1>
-        <p className="label">Rates seed from the price sheet{jobRules.length ? ' + this client’s rules' : ''} — adjust per line as needed.</p>
+        <h1>{isEdit ? `Edit estimate${estNumber ? ` #${estNumber}` : ''}` : 'New estimate'}</h1>
+        <p className="label">
+          {isEdit
+            ? 'Editing an existing estimate — line rates stay as saved (the live price sheet is not re-read).'
+            : `Rates seed from the price sheet${jobRules.length ? ' + this client’s rules' : ''} — adjust per line as needed.`}
+        </p>
       </div>
 
       <div className="logcard logcard-editing">
@@ -593,9 +647,22 @@ function NewEstimateEditor({
           <button type="button" className="btn-primary" disabled={saving} onClick={() => save('sent_to_michelle', true)}>
             {saving ? 'Saving…' : 'Save & send PDF'}
           </button>
-          <button type="button" className="btn-ghost" disabled={saving} onClick={() => save('draft', false)}>
-            Save draft
-          </button>
+          {isEdit ? (
+            // Keep the estimate's current status (a draft stays a draft, a sent
+            // one stays sent) unless "Save & send PDF" was used above.
+            <button
+              type="button"
+              className="btn-ghost"
+              disabled={saving}
+              onClick={() => save(editing!.status, false)}
+            >
+              Save changes
+            </button>
+          ) : (
+            <button type="button" className="btn-ghost" disabled={saving} onClick={() => save('draft', false)}>
+              Save draft
+            </button>
+          )}
           <button type="button" className="btn-ghost" disabled={saving} onClick={onCancel}>Cancel</button>
         </div>
       </div>
