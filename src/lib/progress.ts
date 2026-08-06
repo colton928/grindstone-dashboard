@@ -1,4 +1,5 @@
 import type { DailyLogItem, EstimateLineItem, PriceListItem } from './types'
+import { buildNameToProduct, resolveProductId } from './normalize'
 
 // Computes "built vs. bid" progress for a job.
 //
@@ -48,17 +49,23 @@ interface LoggedAgg {
 
 // Aggregate logged items by product_id, OR by their free-text description when
 // there's no product (one-off / unmatched lines the sync now stores instead of
-// dropping). Keyed so product lines and text lines never collide.
-function aggregateLogged(items: DailyLogItem[]): Map<string, LoggedAgg> {
+// dropping). A null-product line whose description names a known product folds
+// onto that product (normalized-name match). Keyed so product lines and text
+// lines never collide.
+function aggregateLogged(
+  items: DailyLogItem[],
+  nameToProduct: Map<string, string>,
+): Map<string, LoggedAgg> {
   const m = new Map<string, LoggedAgg>()
   for (const it of items) {
-    const key = it.product_id ?? `txt:${(it.description ?? '').toLowerCase().trim()}`
+    const pid = resolveProductId(it.product_id, it.description, nameToProduct)
+    const key = pid ?? `txt:${(it.description ?? '').toLowerCase().trim()}`
     const prev = m.get(key)
     if (prev) {
       prev.qty += Number(it.quantity)
     } else {
       m.set(key, {
-        productId: it.product_id ?? null,
+        productId: pid,
         description: it.description ?? null,
         unit: it.unit ?? null,
         qty: Number(it.quantity),
@@ -73,7 +80,8 @@ export function computeJobProgress(
   loggedItems: DailyLogItem[],
   priceList: PriceListItem[] = [],
 ): JobProgress {
-  const loggedByKey = aggregateLogged(loggedItems)
+  const nameToProduct = buildNameToProduct(priceList)
+  const loggedByKey = aggregateLogged(loggedItems, nameToProduct)
   const productName = new Map(priceList.map((p) => [p.id, p.name]))
   const productUnit = new Map(priceList.map((p) => [p.id, p.unit]))
 
@@ -83,10 +91,13 @@ export function computeJobProgress(
   const orderOf = new Map<string, number>()
 
   for (const li of lineItems) {
-    const key = li.product_id ?? `text:${li.description ?? 'item'}:${order}`
+    // Fold an unlinked free-text line (e.g. "6' Sidewalk") onto its product so
+    // it reconciles with the logged/priced work ("Sidewalk 6\"").
+    const pid = resolveProductId(li.product_id, li.description, nameToProduct)
+    const key = pid ?? `text:${li.description ?? 'item'}:${order}`
     if (!orderOf.has(key)) orderOf.set(key, order++)
     const existing = groups.get(key)
-    const desc = li.description ?? (li.product_id ? productName.get(li.product_id) : null) ?? 'Item'
+    const desc = li.description ?? (pid ? productName.get(pid) : null) ?? 'Item'
     const qty = Number(li.quantity)
     const amount = Number(li.amount)
     if (existing) {
@@ -95,9 +106,9 @@ export function computeJobProgress(
     } else {
       groups.set(key, {
         key,
-        productId: li.product_id,
+        productId: pid,
         description: desc,
-        unit: li.unit ?? (li.product_id ? productUnit.get(li.product_id) ?? null : null),
+        unit: li.unit ?? (pid ? productUnit.get(pid) ?? null : null),
         rate: Number(li.rate),
         estimatedQty: qty,
         estimatedAmount: amount,

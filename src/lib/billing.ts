@@ -1,4 +1,5 @@
 import type { PriceListItem } from './types'
+import { buildNameToProduct, resolveProductId } from './normalize'
 
 // Structural inputs — both full row types and bulk-query rows satisfy these.
 export type LoggedLike = {
@@ -14,7 +15,7 @@ export type BilledLike = {
   amount: number | null
   description?: string | null
 }
-export type EstRateLike = { product_id: string | null; rate: number }
+export type EstRateLike = { product_id: string | null; rate: number; description?: string | null }
 
 // Billing math for a single job.
 //
@@ -97,9 +98,20 @@ export function computeJobBilling(
   estimateLines: EstRateLike[],
   priceList: PriceListItem[],
 ): JobBilling {
-  const logged = aggregate(loggedItems)
-  const billedAgg = aggregate(invoiceLines)
-  const estRate = buildEstimateRateMap(estimateLines)
+  // Fold unlinked free-text lines onto their product by normalized name, so the
+  // estimate's bid rate, the logged work, and any billed lines all reconcile on
+  // one product_id (mirrors the job page). No-op for already-linked lines.
+  const nameToProduct = buildNameToProduct(priceList)
+  const resolve = <T extends { product_id: string | null; description?: string | null }>(
+    arr: T[],
+  ): T[] => arr.map((x) => ({ ...x, product_id: resolveProductId(x.product_id, x.description, nameToProduct) }))
+  const loggedR = resolve(loggedItems)
+  const invoiceR = resolve(invoiceLines)
+  const estimateR = resolve(estimateLines)
+
+  const logged = aggregate(loggedR)
+  const billedAgg = aggregate(invoiceR)
+  const estRate = buildEstimateRateMap(estimateR)
   const pName = new Map(priceList.map((p) => [p.id, p.name]))
   const pUnit = new Map(priceList.map((p) => [p.id, p.unit]))
   const pRate = new Map(priceList.map((p) => [p.id, Number(p.default_rate)]))
@@ -107,7 +119,7 @@ export function computeJobBilling(
   // Actual billed dollars per key (historical truth), incl. matched lines.
   const billedAmtByKey = new Map<string, number>()
   let billedValue = 0
-  for (const li of invoiceLines) {
+  for (const li of invoiceR) {
     const amt = li.amount != null ? Number(li.amount) : Number(li.quantity) * Number(li.rate)
     billedValue += amt
     const k = keyOf(li)

@@ -213,34 +213,37 @@ export async function deleteDailyLogItem(id: string): Promise<void> {
 
 export interface BillingRawData {
   jobs: JobWithClient[]
-  logged: { job_id: string; product_id: string | null; quantity: number }[]
-  billed: { job_id: string; product_id: string | null; quantity: number; rate: number; amount: number | null }[]
-  estRates: { job_id: string; product_id: string | null; rate: number }[]
+  logged: { job_id: string; product_id: string | null; description: string | null; quantity: number }[]
+  billed: { job_id: string; product_id: string | null; description: string | null; quantity: number; rate: number; amount: number | null }[]
+  estRates: { job_id: string; product_id: string | null; description: string | null; rate: number }[]
 }
 
 // One bulk pull powering the billing tracker (compute per-job client-side).
 export async function fetchBillingData(): Promise<BillingRawData> {
   const [jobsRes, loggedRes, billedRes, estRes] = await Promise.all([
     supabase.from('jobs').select('*, client:clients(id, name)').order('name'),
-    supabase.from('daily_log_items').select('product_id, quantity, daily_logs!inner(job_id)'),
+    supabase.from('daily_log_items').select('product_id, description, quantity, daily_logs!inner(job_id)'),
     supabase
       .from('invoice_line_items')
-      .select('product_id, quantity, rate, amount, invoices!inner(job_id)'),
+      .select('product_id, description, quantity, rate, amount, invoices!inner(job_id)'),
     supabase
       .from('estimate_line_items')
-      .select('product_id, rate, estimates!inner(job_id, status)'),
+      .select('product_id, description, rate, estimates!inner(job_id, status)'),
   ])
   for (const r of [jobsRes, loggedRes, billedRes, estRes]) if (r.error) throw r.error
 
   // PostgREST embeds the parent as a nested object; flatten to job_id.
+  // description is carried so unlinked free-text lines can reconcile by name.
   const logged = (loggedRes.data ?? []).map((r: any) => ({
     job_id: r.daily_logs.job_id as string,
     product_id: r.product_id,
+    description: r.description ?? null,
     quantity: Number(r.quantity),
   }))
   const billed = (billedRes.data ?? []).map((r: any) => ({
     job_id: r.invoices.job_id as string,
     product_id: r.product_id,
+    description: r.description ?? null,
     quantity: Number(r.quantity),
     rate: Number(r.rate),
     amount: r.amount != null ? Number(r.amount) : null,
@@ -250,6 +253,7 @@ export async function fetchBillingData(): Promise<BillingRawData> {
     .map((r: any) => ({
       job_id: r.estimates.job_id as string,
       product_id: r.product_id,
+      description: r.description ?? null,
       rate: Number(r.rate),
     }))
 
