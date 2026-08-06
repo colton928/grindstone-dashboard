@@ -1,12 +1,18 @@
 import type { PriceListItem } from './types'
 
 // Structural inputs — both full row types and bulk-query rows satisfy these.
-export type LoggedLike = { product_id: string | null; quantity: number }
+export type LoggedLike = {
+  product_id: string | null
+  quantity: number
+  description?: string | null
+  unit?: string | null
+}
 export type BilledLike = {
   product_id: string | null
   quantity: number
   rate: number
   amount: number | null
+  description?: string | null
 }
 export type EstRateLike = { product_id: string | null; rate: number }
 
@@ -41,13 +47,37 @@ export interface JobBilling {
 
 const EPS = 0.005
 
-function sumByProduct<T extends { product_id: string | null; quantity: number }>(
-  items: T[],
-): Map<string, number> {
-  const m = new Map<string, number>()
+// A logged/billed line's grouping key: its product_id, or — for one-off /
+// unmatched free-text lines with no product — a text key from the description,
+// so the same one-off logged and billed reconcile against each other.
+function keyOf(it: { product_id: string | null; description?: string | null }): string {
+  return it.product_id ?? `txt:${(it.description ?? '').toLowerCase().trim()}`
+}
+
+interface QtyAgg {
+  productId: string | null
+  description: string | null
+  unit: string | null
+  qty: number
+}
+
+function aggregate(
+  items: { product_id: string | null; quantity: number; description?: string | null; unit?: string | null }[],
+): Map<string, QtyAgg> {
+  const m = new Map<string, QtyAgg>()
   for (const it of items) {
-    if (!it.product_id) continue
-    m.set(it.product_id, (m.get(it.product_id) ?? 0) + Number(it.quantity))
+    const k = keyOf(it)
+    const prev = m.get(k)
+    if (prev) {
+      prev.qty += Number(it.quantity)
+    } else {
+      m.set(k, {
+        productId: it.product_id ?? null,
+        description: it.description ?? null,
+        unit: it.unit ?? null,
+        qty: Number(it.quantity),
+      })
+    }
   }
   return m
 }
@@ -67,48 +97,54 @@ export function computeJobBilling(
   estimateLines: EstRateLike[],
   priceList: PriceListItem[],
 ): JobBilling {
-  const logged = sumByProduct(loggedItems)
-  const billedQtyByProduct = sumByProduct(invoiceLines)
+  const logged = aggregate(loggedItems)
+  const billedAgg = aggregate(invoiceLines)
   const estRate = buildEstimateRateMap(estimateLines)
   const pName = new Map(priceList.map((p) => [p.id, p.name]))
   const pUnit = new Map(priceList.map((p) => [p.id, p.unit]))
   const pRate = new Map(priceList.map((p) => [p.id, Number(p.default_rate)]))
 
-  // Actual billed dollars per product (historical truth), incl. matched lines.
-  const billedAmtByProduct = new Map<string, number>()
+  // Actual billed dollars per key (historical truth), incl. matched lines.
+  const billedAmtByKey = new Map<string, number>()
   let billedValue = 0
   for (const li of invoiceLines) {
     const amt = li.amount != null ? Number(li.amount) : Number(li.quantity) * Number(li.rate)
     billedValue += amt
-    if (li.product_id) {
-      billedAmtByProduct.set(li.product_id, (billedAmtByProduct.get(li.product_id) ?? 0) + amt)
-    }
+    const k = keyOf(li)
+    billedAmtByKey.set(k, (billedAmtByKey.get(k) ?? 0) + amt)
   }
 
-  const productIds = new Set<string>([...logged.keys(), ...billedQtyByProduct.keys()])
+  const keys = new Set<string>([...logged.keys(), ...billedAgg.keys()])
   const lines: BillingLine[] = []
   let loggedValue = 0
   let remainingValue = 0
   let unbilledQty = 0
 
-  for (const pid of productIds) {
-    const loggedQty = logged.get(pid) ?? 0
-    const billedQty = billedQtyByProduct.get(pid) ?? 0
+  for (const key of keys) {
+    const la = logged.get(key)
+    const ba = billedAgg.get(key)
+    const productId = key.startsWith('txt:') ? null : key
+    const loggedQty = la?.qty ?? 0
+    const billedQty = ba?.qty ?? 0
     const remainingQty = Math.max(0, loggedQty - billedQty)
     unbilledQty += remainingQty
-    const rate = estRate.get(pid) ?? pRate.get(pid) ?? 0
+    // One-off / unmatched lines have no product → unpriced ($0) until Colton
+    // sets a rate on the draft invoice line.
+    const rate = productId ? estRate.get(productId) ?? pRate.get(productId) ?? 0 : 0
     const remainingAmount = remainingQty * rate
     loggedValue += loggedQty * rate
     remainingValue += remainingAmount
     lines.push({
-      productId: pid,
-      description: pName.get(pid) ?? 'Logged work',
-      unit: pUnit.get(pid) ?? null,
+      productId,
+      description: productId
+        ? pName.get(productId) ?? 'Logged work'
+        : (la?.description ?? ba?.description) || 'One-off line',
+      unit: productId ? pUnit.get(productId) ?? null : la?.unit ?? ba?.unit ?? null,
       loggedQty,
       billedQty,
       remainingQty,
       rate,
-      billedAmount: billedAmtByProduct.get(pid) ?? 0,
+      billedAmount: billedAmtByKey.get(key) ?? 0,
       remainingAmount,
     })
   }

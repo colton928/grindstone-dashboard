@@ -368,20 +368,25 @@ export function JobDetail() {
           <p className="muted section-note">Logged in the field but not on the estimate.</p>
           <div className="lines">
             {progress.extras.map((ex) => (
-              <div key={ex.productId} className="line line-extra">
+              <div key={ex.key} className="line line-extra">
                 <div className="line-top">
-                  <span className="line-desc">{ex.description}</span>
+                  <span className="line-desc">
+                    {ex.description}
+                    {!ex.productId && <span className="pill pill-warn oneoff-pill">One-off</span>}
+                  </span>
                   <span className="num label">
                     {formatQty(ex.loggedQty)}
                     {ex.unit ? ` ${ex.unit}` : ''}
                   </span>
                 </div>
-                <Link
-                  to={`/daily-log?job=${id}&product=${ex.productId}`}
-                  className="line-logs label"
-                >
-                  View daily logs →
-                </Link>
+                {ex.productId && (
+                  <Link
+                    to={`/daily-log?job=${id}&product=${ex.productId}`}
+                    className="line-logs label"
+                  >
+                    View daily logs →
+                  </Link>
+                )}
               </div>
             ))}
           </div>

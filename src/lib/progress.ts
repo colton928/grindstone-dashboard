@@ -23,7 +23,8 @@ export interface LineProgress {
 }
 
 export interface ExtraLogged {
-  productId: string
+  key: string
+  productId: string | null // null for one-off / unmatched free-text lines
   description: string
   unit: string | null
   loggedQty: number
@@ -38,11 +39,31 @@ export interface JobProgress {
   hasEstimate: boolean
 }
 
-function sumLoggedByProduct(items: DailyLogItem[]): Map<string, number> {
-  const m = new Map<string, number>()
+interface LoggedAgg {
+  productId: string | null
+  description: string | null
+  unit: string | null
+  qty: number
+}
+
+// Aggregate logged items by product_id, OR by their free-text description when
+// there's no product (one-off / unmatched lines the sync now stores instead of
+// dropping). Keyed so product lines and text lines never collide.
+function aggregateLogged(items: DailyLogItem[]): Map<string, LoggedAgg> {
+  const m = new Map<string, LoggedAgg>()
   for (const it of items) {
-    if (!it.product_id) continue
-    m.set(it.product_id, (m.get(it.product_id) ?? 0) + Number(it.quantity))
+    const key = it.product_id ?? `txt:${(it.description ?? '').toLowerCase().trim()}`
+    const prev = m.get(key)
+    if (prev) {
+      prev.qty += Number(it.quantity)
+    } else {
+      m.set(key, {
+        productId: it.product_id ?? null,
+        description: it.description ?? null,
+        unit: it.unit ?? null,
+        qty: Number(it.quantity),
+      })
+    }
   }
   return m
 }
@@ -52,7 +73,7 @@ export function computeJobProgress(
   loggedItems: DailyLogItem[],
   priceList: PriceListItem[] = [],
 ): JobProgress {
-  const loggedByProduct = sumLoggedByProduct(loggedItems)
+  const loggedByKey = aggregateLogged(loggedItems)
   const productName = new Map(priceList.map((p) => [p.id, p.name]))
   const productUnit = new Map(priceList.map((p) => [p.id, p.unit]))
 
@@ -96,7 +117,7 @@ export function computeJobProgress(
   for (const line of lines) {
     if (line.productId) {
       matchedProducts.add(line.productId)
-      line.loggedQty = loggedByProduct.get(line.productId) ?? 0
+      line.loggedQty = loggedByKey.get(line.productId)?.qty ?? 0
     }
     line.remainingQty = line.estimatedQty - line.loggedQty
     line.pct = line.estimatedQty > 0 ? (line.loggedQty / line.estimatedQty) * 100 : null
@@ -108,14 +129,18 @@ export function computeJobProgress(
   lines.sort((a, b) => (orderOf.get(a.key) ?? 0) - (orderOf.get(b.key) ?? 0))
 
   // Logged work that isn't on the estimate at all → "extras" to surface.
+  // Includes one-off / unmatched free-text lines (no product_id).
   const extras: ExtraLogged[] = []
-  for (const [pid, qty] of loggedByProduct) {
-    if (matchedProducts.has(pid)) continue
+  for (const [key, agg] of loggedByKey) {
+    if (agg.productId && matchedProducts.has(agg.productId)) continue
     extras.push({
-      productId: pid,
-      description: productName.get(pid) ?? 'Logged work',
-      unit: productUnit.get(pid) ?? null,
-      loggedQty: qty,
+      key,
+      productId: agg.productId,
+      description: agg.productId
+        ? productName.get(agg.productId) ?? 'Logged work'
+        : agg.description || 'One-off line',
+      unit: agg.productId ? productUnit.get(agg.productId) ?? null : agg.unit,
+      loggedQty: agg.qty,
     })
   }
 

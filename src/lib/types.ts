@@ -92,6 +92,8 @@ export interface DailyLogItem {
   id: string
   daily_log_id: string
   product_id: string | null
+  description?: string | null // free text for one-off / unmatched lines (no product)
+  unit?: string | null
   quantity: number
   sort_order?: number | null
 }

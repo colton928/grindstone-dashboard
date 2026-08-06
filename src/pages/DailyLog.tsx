@@ -264,11 +264,16 @@ export function DailyLog() {
                         key={it.id}
                         className={`logitem${fProduct && it.product_id === fProduct ? ' logitem-hit' : ''}`}
                       >
-                        <span>{it.product_id ? productName.get(it.product_id) ?? 'Unknown' : 'Unknown'}</span>
+                        <span>
+                          {it.product_id
+                            ? productName.get(it.product_id) ?? 'Unknown'
+                            : it.description || 'One-off line'}
+                          {!it.product_id && <span className="pill pill-warn oneoff-pill">One-off</span>}
+                        </span>
                         <span className="num">
                           {formatQty(Number(it.quantity))}
-                          {it.product_id && productUnit.get(it.product_id)
-                            ? ` ${productUnit.get(it.product_id)}`
+                          {(it.product_id ? productUnit.get(it.product_id) : it.unit)
+                            ? ` ${it.product_id ? productUnit.get(it.product_id) : it.unit}`
                             : ''}
                         </span>
                       </div>
