@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react'
+import type { MouseEvent } from 'react'
 import { Link } from 'react-router-dom'
 import {
+  fetchAllJobs,
   fetchHomeJobs,
   fetchJobEstimate,
   fetchJobLoggedItems,
   fetchPriceList,
   fetchUpcomingSchedule,
+  updateJobStatus,
 } from '../lib/queries'
 import { computeJobProgress, formatDate, formatMoney, formatPct } from '../lib/progress'
 import type { JobWithClient, ScheduleEventFull, ScheduleKind } from '../lib/types'
@@ -43,6 +46,52 @@ export function Home() {
   const [upcoming, setUpcoming] = useState<ScheduleEventFull[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [showArchived, setShowArchived] = useState(false)
+  const [archived, setArchived] = useState<JobWithClient[] | null>(null)
+  const [busyId, setBusyId] = useState<string | null>(null)
+
+  // Archive a job off the Home page (reuses the Billing "Archive job" action).
+  async function archiveJob(e: MouseEvent, job: JobWithClient) {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!window.confirm(`Archive "${job.name}"? It'll drop off Home — restore it any time from "Show archived".`)) return
+    setBusyId(job.id)
+    try {
+      await updateJobStatus(job.id, 'archived')
+      setSummaries((prev) => prev.filter((s) => s.job.id !== job.id))
+      setArchived((prev) => (prev ? [...prev, job].sort((a, b) => a.name.localeCompare(b.name)) : prev))
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  // Restore an archived job back to active (it reappears on Home if it has logs).
+  async function restoreJob(job: JobWithClient) {
+    setBusyId(job.id)
+    try {
+      await updateJobStatus(job.id, 'active')
+      setArchived((prev) => (prev ? prev.filter((j) => j.id !== job.id) : prev))
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function toggleArchived() {
+    const next = !showArchived
+    setShowArchived(next)
+    if (next && archived === null) {
+      try {
+        const all = await fetchAllJobs()
+        setArchived(all.filter((j) => j.status === 'archived'))
+      } catch (err) {
+        window.alert(err instanceof Error ? err.message : String(err))
+      }
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -136,11 +185,22 @@ export function Home() {
               <div>
                 <h3 className="job-name">{job.name}</h3>
                 <p className="job-meta label">
-                  {job.client?.name ?? 'No client'}
+                  {job.client?.name ?? <span className="chip-warn">⚠ Needs client</span>}
                   {job.city ? ` · ${job.city}` : ''}
                 </p>
               </div>
-              {needsBilling && <span className="pill pill-warn">Bill</span>}
+              <div className="job-card-actions">
+                {needsBilling && <span className="pill pill-warn">Bill</span>}
+                <button
+                  type="button"
+                  className="card-archive"
+                  title="Archive job"
+                  disabled={busyId === job.id}
+                  onClick={(e) => archiveJob(e, job)}
+                >
+                  Archive
+                </button>
+              </div>
             </div>
 
             {hasEstimate ? (
@@ -159,6 +219,39 @@ export function Home() {
             )}
           </Link>
         ))}
+      </div>
+
+      <div className="archived-section">
+        <button type="button" className="btn-ghost" onClick={toggleArchived}>
+          {showArchived ? 'Hide archived' : 'Show archived'}
+          {archived && archived.length > 0 ? ` (${archived.length})` : ''}
+        </button>
+        {showArchived && (
+          archived === null ? (
+            <p className="label" style={{ marginTop: 8 }}>Loading…</p>
+          ) : archived.length === 0 ? (
+            <p className="label" style={{ marginTop: 8 }}>No archived jobs.</p>
+          ) : (
+            <div className="archived-list">
+              {archived.map((job) => (
+                <div key={job.id} className="archived-row">
+                  <Link to={`/jobs/${job.id}`} className="archived-name">
+                    {job.name}
+                    <span className="label"> · {job.client?.name ?? 'No client'}</span>
+                  </Link>
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    disabled={busyId === job.id}
+                    onClick={() => restoreJob(job)}
+                  >
+                    Restore
+                  </button>
+                </div>
+              ))}
+            </div>
+          )
+        )}
       </div>
     </div>
   )

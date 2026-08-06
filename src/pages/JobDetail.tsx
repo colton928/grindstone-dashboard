@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
+  createClient,
   deleteJobIfEmpty,
   fetchAllEstimates,
+  fetchClients,
   fetchJob,
   fetchJobEstimate,
   fetchJobLoggedItems,
   fetchPriceList,
   mergeJobInto,
+  updateJob,
 } from '../lib/queries'
 import {
   computeJobProgress,
@@ -17,7 +20,7 @@ import {
   formatQty,
   type JobProgress,
 } from '../lib/progress'
-import type { Estimate, EstimateFull, JobWithClient } from '../lib/types'
+import type { Client, Estimate, EstimateFull, JobWithClient } from '../lib/types'
 
 function estTotal(est: EstimateFull): number {
   return est.lines.reduce(
@@ -44,6 +47,53 @@ export function JobDetail() {
   const [allEstimates, setAllEstimates] = useState<EstimateFull[] | null>(null)
   const [selectedEstId, setSelectedEstId] = useState('')
   const [merging, setMerging] = useState(false)
+
+  // Assign-a-client (for jobs the sync auto-created without one).
+  const [editingClient, setEditingClient] = useState(false)
+  const [clients, setClients] = useState<Client[] | null>(null)
+  const [clientChoice, setClientChoice] = useState('') // client id, or '__new__'
+  const [newClientName, setNewClientName] = useState('')
+  const [savingClient, setSavingClient] = useState(false)
+
+  async function openClientEditor() {
+    setEditingClient(true)
+    setClientChoice(job?.client_id ?? '')
+    if (!clients) {
+      try {
+        setClients(await fetchClients())
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e))
+      }
+    }
+  }
+
+  async function saveClient() {
+    if (!id) return
+    setSavingClient(true)
+    try {
+      let clientId: string | null
+      if (clientChoice === '__new__') {
+        const name = newClientName.trim()
+        if (!name) {
+          setSavingClient(false)
+          return
+        }
+        const created = await createClient(name)
+        setClients((prev) => (prev ? [...prev, created].sort((a, b) => a.name.localeCompare(b.name)) : prev))
+        clientId = created.id
+      } else {
+        clientId = clientChoice || null
+      }
+      await updateJob(id, { client_id: clientId })
+      setEditingClient(false)
+      setNewClientName('')
+      reload()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setSavingClient(false)
+    }
+  }
 
   useEffect(() => {
     if (!id) return
@@ -137,10 +187,66 @@ export function JobDetail() {
       <div className="job-detail-head">
         <h1>{job.name}</h1>
         <p className="label">
-          {job.client?.name ?? 'No client'}
+          {job.client?.name ?? <span className="chip-warn">⚠ Needs client</span>}
           {job.city ? ` · ${job.city}` : ''}
           {estimate?.estimate_number ? ` · Est #${estimate.estimate_number}` : ''}
+          {!editingClient && (
+            <button type="button" className="link-btn" onClick={() => void openClientEditor()}>
+              {job.client ? 'Change client' : 'Assign client'}
+            </button>
+          )}
         </p>
+
+        {editingClient && (
+          clients == null ? (
+            <p className="muted">Loading clients…</p>
+          ) : (
+            <div className="client-editor">
+              <label className="filter">
+                <span className="label">Client for this job</span>
+                <select value={clientChoice} onChange={(e) => setClientChoice(e.target.value)}>
+                  <option value="">— no client —</option>
+                  {clients.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                  <option value="__new__">+ New client…</option>
+                </select>
+              </label>
+              {clientChoice === '__new__' && (
+                <label className="filter">
+                  <span className="label">New client name</span>
+                  <input
+                    type="text"
+                    placeholder="e.g. Mitchell X"
+                    value={newClientName}
+                    onChange={(e) => setNewClientName(e.target.value)}
+                  />
+                </label>
+              )}
+              <div className="edit-actions">
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={savingClient || (clientChoice === '__new__' && !newClientName.trim())}
+                  onClick={() => void saveClient()}
+                >
+                  {savingClient ? 'Saving…' : 'Save client'}
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  disabled={savingClient}
+                  onClick={() => {
+                    setEditingClient(false)
+                    setNewClientName('')
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )
+        )}
       </div>
 
       {progress.hasEstimate ? (

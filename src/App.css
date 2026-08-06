@@ -140,30 +140,16 @@
   border-top-color: var(--accent);
 }
 @media (min-width: 768px) {
+  /* Keep the bar pinned to the bottom on desktop/laptop too (same as mobile),
+     just centered to the content width. */
   .tabbar {
-    position: sticky;
-    top: 57px;
-    bottom: auto;
+    left: 0;
+    right: 0;
     max-width: 1000px;
     margin: 0 auto;
-    border-top: none;
-    border-bottom: 1px solid var(--border);
-    border-radius: 0;
   }
   .tab {
-    flex: 0 0 auto;
     padding: 12px 18px;
-    border-top: none;
-    border-bottom: 2px solid transparent;
-    margin-top: 0;
-    margin-bottom: -1px;
-  }
-  .tab-active {
-    border-top-color: transparent;
-    border-bottom-color: var(--accent);
-  }
-  .content {
-    padding-bottom: 32px;
   }
 }
 
@@ -297,6 +283,61 @@
 .job-card-noest {
   color: var(--text-soft);
   font-style: italic;
+}
+.job-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.card-archive {
+  background: transparent;
+  color: var(--text-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 9px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.card-archive:hover {
+  color: var(--text-h);
+  border-color: var(--border-strong);
+}
+.card-archive:disabled {
+  opacity: 0.5;
+}
+.chip-warn {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ───────────────────────── Archived jobs (Home) ───────────────────────── */
+.archived-section {
+  margin-top: 8px;
+}
+.archived-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+.archived-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+}
+.archived-name {
+  color: var(--text-h);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ───────────────────────── Pills ───────────────────────── */
@@ -627,6 +668,25 @@
 .edit-delete:hover {
   color: #fff;
   background: #c0392b;
+}
+
+/* Inline "Assign / Change client" trigger + editor (JobDetail) */
+.link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-left: 8px;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.client-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  max-width: 360px;
 }
 
 /* ───────────────────────── Billing ───────────────────────── */
