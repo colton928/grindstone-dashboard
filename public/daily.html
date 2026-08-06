@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>Grindstone – Daily Report</title>
+  <style>
+    :root {
+      --orange:#E87722; --orange-dark:#c9631a; --charcoal:#1e1e1e;
+      --dark-gray:#2a2a2a; --mid-gray:#3a3a3a; --text-light:#ffffff;
+      --text-muted:#aaaaaa; --border:#444; --success:#4caf50; --radius:12px; --gap:20px;
+    }
+    *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+    body{background:var(--charcoal);color:var(--text-light);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:16px;min-height:100vh;padding-bottom:40px}
+    .header{background:var(--orange);padding:14px 16px 12px;position:sticky;top:0;z-index:10;box-shadow:0 2px 12px rgba(0,0,0,.4);display:flex;align-items:center;gap:12px}
+    .header-logo-img{width:44px;height:44px;flex-shrink:0;filter:invert(1);display:block}
+    .header-center{flex:1;text-align:center}
+    .header-company{font-size:19px;font-weight:800;letter-spacing:1px;color:#fff;text-transform:uppercase;line-height:1.1}
+    .header-sub{font-size:12px;color:rgba(255,255,255,.85);margin-top:2px}
+    .header-name{background:rgba(0,0,0,.2);border-radius:20px;padding:2px 10px;font-size:12px;font-weight:700;letter-spacing:1px;color:#fff;white-space:nowrap;flex-shrink:0}
+    .container{max-width:540px;margin:0 auto;padding:20px 16px}
+    .card{background:var(--dark-gray);border-radius:var(--radius);padding:18px 16px;margin-bottom:var(--gap);border:1px solid var(--border)}
+    .card-title{font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--orange);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border)}
+    .field{margin-bottom:14px}.field:last-child{margin-bottom:0}
+    label{display:block;font-size:13px;font-weight:600;color:var(--text-muted);margin-bottom:6px}
+    select,input[type="number"],input[type="date"],input[type="text"],textarea{
+      width:100%;background:var(--mid-gray);border:1.5px solid var(--border);border-radius:8px;
+      color:var(--text-light);font-size:17px;padding:13px 14px;appearance:none;-webkit-appearance:none;
+      outline:none;transition:border-color .2s;font-family:inherit}
+    select:focus,input:focus,textarea:focus{border-color:var(--orange)}
+    select option{background:#333;color:#fff}
+    textarea{resize:none;line-height:1.5}
+    .select-wrap{position:relative}
+    .select-wrap::after{content:'▾';position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--orange);font-size:18px;pointer-events:none}
+    .select-wrap select{padding-right:36px}
+    input[type="number"]{text-align:center}
+    .qty-label{text-align:center}
+    .oneoff-input{margin-top:8px}
+    .job-trigger{
+      width:100%;background:var(--mid-gray);border:1.5px solid var(--border);border-radius:8px;
+      color:var(--text-muted);font-size:17px;padding:13px 40px 13px 14px;cursor:pointer;
+      display:flex;align-items:center;justify-content:space-between;user-select:none;
+      transition:border-color .2s;position:relative;min-height:50px}
+    .job-trigger:active{border-color:var(--orange)}
+    .job-trigger.has-value{color:var(--text-light)}
+    .job-trigger-text{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-right:10px}
+    .job-trigger-arrow{color:var(--orange);font-size:18px;flex-shrink:0}
+    .job-loading-dot{display:inline-block;animation:pulse 1.2s ease-in-out infinite}
+    @keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
+    .work-row{display:grid;grid-template-columns:1fr 80px;gap:8px;align-items:start}
+    .work-number{font-size:11px;font-weight:700;color:var(--orange);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px}
+    .work-item{margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--border)}
+    .work-item:last-child{margin-bottom:0;padding-bottom:0;border-bottom:none}
+    .add-work-btn{width:100%;margin-top:4px;background:transparent;border:1.5px dashed var(--orange);border-radius:8px;color:var(--orange);font-size:14px;font-weight:700;padding:11px;cursor:pointer;letter-spacing:.5px;transition:background .15s}
+    .add-work-btn:active{background:rgba(232,119,34,.12)}
+    .remove-item-btn{background:none;border:none;color:var(--text-muted);font-size:17px;cursor:pointer;padding:0 2px 2px;line-height:1;flex-shrink:0}
+    .remove-item-btn:active{color:#ff6b6b}
+    .newtype-form{margin-top:10px;padding:14px;background:#1a1a1a;border:1px dashed var(--orange);border-radius:8px;display:none}
+    .newtype-form.open{display:block}
+    .newtype-row{display:grid;grid-template-columns:1fr 90px;gap:8px;margin-bottom:8px}
+    .bill-toggle{display:flex;align-items:center;gap:14px;padding:4px 0}
+    .toggle-switch{position:relative;width:54px;height:30px;flex-shrink:0}
+    .toggle-switch input{opacity:0;width:0;height:0}
+    .toggle-slider{position:absolute;inset:0;background:var(--mid-gray);border-radius:30px;cursor:pointer;transition:background .2s;border:1.5px solid var(--border)}
+    .toggle-slider::before{content:'';position:absolute;width:22px;height:22px;left:3px;top:3px;background:#fff;border-radius:50%;transition:transform .2s}
+    .toggle-switch input:checked+.toggle-slider{background:var(--orange);border-color:var(--orange)}
+    .toggle-switch input:checked+.toggle-slider::before{transform:translateX(24px)}
+    .toggle-label{font-size:16px;font-weight:600}
+    .toggle-sub{font-size:12px;color:var(--text-muted);margin-top:2px}
+    .btn-submit{width:100%;background:var(--orange);color:#fff;border:none;border-radius:var(--radius);font-size:18px;font-weight:700;padding:18px;cursor:pointer;letter-spacing:.5px;transition:background .15s,transform .1s;text-transform:uppercase;margin-top:4px}
+    .btn-submit:active{background:var(--orange-dark);transform:scale(.98)}
+    .btn-submit:disabled{background:#555;cursor:not-allowed;transform:none}
+    #success-screen{display:none;text-align:center;padding:60px 20px}
+    .success-icon{width:80px;height:80px;background:var(--success);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:40px;margin:0 auto 24px}
+    .success-title{font-size:26px;font-weight:800;margin-bottom:10px}
+    .success-sub{font-size:15px;color:var(--text-muted);margin-bottom:32px;line-height:1.5}
+    .btn-new{background:var(--orange);color:#fff;border:none;border-radius:var(--radius);font-size:16px;font-weight:700;padding:16px 32px;cursor:pointer;text-transform:uppercase}
+    .error-banner{display:none;background:#c0392b;color:#fff;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:14px;line-height:1.5}
+    .spinner{display:inline-block;width:20px;height:20px;border:3px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:8px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .backdrop{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;display:none;opacity:0;transition:opacity .3s}
+    .backdrop.open{display:block;opacity:1}
+    .sheet{position:fixed;bottom:0;left:0;right:0;background:var(--dark-gray);border-radius:20px 20px 0 0;z-index:101;transform:translateY(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);max-height:88vh;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom,0px)}
+    .sheet.open{transform:translateY(0)}
+    .sheet-handle{width:36px;height:4px;background:#555;border-radius:2px;margin:12px auto 0;flex-shrink:0}
+    .sheet-header{padding:14px 16px 14px;border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:space-between}
+    .sheet-title{font-size:17px;font-weight:700}
+    .sheet-close{background:none;border:none;color:var(--text-muted);font-size:22px;cursor:pointer;padding:0 4px;line-height:1}
+    .sheet-search{padding:10px 16px 12px;border-bottom:1px solid var(--border);flex-shrink:0}
+    .search-wrap{position:relative}
+    .search-wrap input{width:100%;background:var(--mid-gray);border:1.5px solid var(--border);border-radius:10px;color:#fff;font-size:16px;padding:11px 14px 11px 40px;outline:none;font-family:inherit}
+    .search-wrap input:focus{border-color:var(--orange)}
+    .search-icon{position:absolute;left:13px;top:50%;transform:translateY(-50%);font-size:16px;pointer-events:none}
+    .job-list{overflow-y:auto;flex:1;-webkit-overflow-scrolling:touch}
+    .section-label{font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--orange);padding:14px 16px 6px}
+    .job-item{padding:13px 16px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.05);display:flex;align-items:center;gap:12px}
+    .job-item:active,.job-item.selected{background:rgba(232,119,34,.12)}
+    .job-icon{font-size:18px;flex-shrink:0;width:24px;text-align:center}
+    .job-name{font-size:16px;font-weight:600;line-height:1.3}
+    .job-meta{font-size:12px;color:var(--text-muted);margin-top:2px}
+    .job-empty{text-align:center;color:var(--text-muted);padding:30px 20px;font-size:14px;line-height:1.6}
+    .add-job-row{border-top:1px solid var(--border);padding:14px 16px;flex-shrink:0}
+    .add-job-btn{width:100%;background:transparent;border:1.5px solid var(--orange);color:var(--orange);border-radius:10px;font-size:15px;font-weight:700;padding:13px;cursor:pointer;text-transform:uppercase;letter-spacing:.5px}
+    .add-job-btn:active{background:rgba(232,119,34,.1)}
+    .sheet-body{padding:16px;overflow-y:auto;flex:1;-webkit-overflow-scrolling:touch}
+    .sheet-field{margin-bottom:16px}.sheet-field:last-of-type{margin-bottom:20px}
+    .sheet-label{display:block;font-size:13px;font-weight:600;color:var(--text-muted);margin-bottom:6px}
+    .sheet-input{width:100%;background:var(--mid-gray);border:1.5px solid var(--border);border-radius:8px;color:#fff;font-size:17px;padding:13px 14px;outline:none;font-family:inherit}
+    .sheet-input:focus{border-color:var(--orange)}
+    .save-btn{width:100%;background:var(--orange);color:#fff;border:none;border-radius:10px;font-size:17px;font-weight:700;padding:16px;cursor:pointer;text-transform:uppercase}
+    .save-btn:disabled{background:#555;cursor:not-allowed}
+    .save-btn:active{background:var(--orange-dark)}
+  </style>
+</head>
+<body>
+
+<div class="backdrop" id="backdrop" onclick="closeAllSheets()"></div>
+
+<!-- JOB SELECTOR SHEET -->
+<div class="sheet" id="job-sheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-header">
+    <span class="sheet-title" id="t-select-job">Select Job</span>
+    <button class="sheet-close" onclick="closeAllSheets()">✕</button>
+  </div>
+  <div class="sheet-search">
+    <div class="search-wrap">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="job-search" oninput="filterJobs(this.value)" autocomplete="off" autocorrect="off" spellcheck="false">
+    </div>
+  </div>
+  <div class="job-list" id="job-list">
+    <div class="job-empty"><span class="job-loading-dot">●</span> …</div>
+  </div>
+  <div class="add-job-row">
+    <button class="add-job-btn" id="t-add-job" onclick="openAddJobSheet()">+ Add New Job</button>
+  </div>
+</div>
+
+<!-- ADD JOB SHEET -->
+<div class="sheet" id="add-job-sheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-header">
+    <span class="sheet-title" id="t-add-job-title">Add New Job</span>
+    <button class="sheet-close" onclick="closeAllSheets()">✕</button>
+  </div>
+  <div class="sheet-body">
+    <div class="sheet-field">
+      <label class="sheet-label" id="t-job-name-lbl">Job Name</label>
+      <input type="text" class="sheet-input" id="new-job-name">
+    </div>
+    <div class="sheet-field">
+      <label class="sheet-label" id="t-city-lbl">City</label>
+      <input type="text" class="sheet-input" id="new-job-city">
+    </div>
+    <div class="sheet-field">
+      <label class="sheet-label" id="t-client-lbl">Client / Contractor</label>
+      <input type="text" class="sheet-input" id="new-job-client">
+    </div>
+    <div class="sheet-field">
+      <div class="bill-toggle">
+        <label class="toggle-switch"><input type="checkbox" id="new-job-active" checked><span class="toggle-slider"></span></label>
+        <div><div class="toggle-label" id="t-active-lbl">Active</div><div class="toggle-sub" id="t-active-sub">Show in job dropdown</div></div>
+      </div>
+    </div>
+    <button class="save-btn" id="save-job-btn" onclick="saveNewJob()">Save Job</button>
+  </div>
+</div>
+
+<!-- HEADER -->
+<div class="header">
+  <img class="header-logo-img" src="data:image/png;base64,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" alt="">
+  <div class="header-center">
+    <div class="header-company">GRINDSTONE CONCRETE</div>
+    <div class="header-sub" id="t-header-sub">Daily Field Report</div>
+  </div>
+  <div class="header-name" id="header-name">COLTON</div>
+</div>
+
+<!-- MAIN -->
+<div class="container">
+  <div id="form-section">
+    <div class="error-banner" id="error-banner"></div>
+    <form id="daily-form" novalidate>
+      <div class="card">
+        <div class="card-title" id="t-where">Where</div>
+        <div class="field">
+          <label for="report-date" id="t-date">Date</label>
+          <input type="date" id="report-date" required>
+        </div>
+        <div class="field">
+          <label id="t-job-loc">Job / Location</label>
+          <div class="job-trigger" id="job-trigger" onclick="openJobSheet()">
+            <span class="job-trigger-text" id="job-display">Select job / location...</span>
+            <span class="job-trigger-arrow">▾</span>
+          </div>
+          <input type="hidden" id="job-value" name="job">
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" id="t-work-today">Work Completed Today</div>
+        <div id="work-items-container"></div>
+        <button type="button" class="add-work-btn" id="add-work-btn" onclick="addWorkItem()">+ Add Work Type</button>
+        <button type="button" class="add-work-btn" id="new-type-btn" style="display:none;margin-top:8px" onclick="toggleNewType()">+ New work type</button>
+        <div class="newtype-form" id="newtype-form">
+          <div class="newtype-row">
+            <input type="text" id="nt-name" placeholder="New work type name">
+            <div class="select-wrap"><select id="nt-unit"><option>EA</option><option>LF</option><option>SF</option></select></div>
+          </div>
+          <input type="text" id="nt-cat" placeholder="Category (optional, e.g. Sidewalk)" style="margin-bottom:8px">
+          <button type="button" class="save-btn" id="nt-save" onclick="saveNewType()">Create work type</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" id="t-materials">Materials</div>
+        <div class="field">
+          <label for="concrete-yards" id="t-concrete">Concrete Ordered (yards)</label>
+          <input type="number" id="concrete-yards" name="concreteYards" placeholder="0" min="0" step="0.5">
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" id="t-notes">Notes</div>
+        <div class="field">
+          <label for="extra-notes" id="t-extra">Extra Work / Additional Info</label>
+          <textarea id="extra-notes" name="extraNotes" rows="3"></textarea>
+        </div>
+        <div class="field">
+          <label for="issues-delays" id="t-issues">Issues / Delays</label>
+          <textarea id="issues-delays" name="issuesDelays" rows="3"></textarea>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" id="t-billing">Billing</div>
+        <div class="bill-toggle">
+          <label class="toggle-switch" for="ready-to-bill">
+            <input type="checkbox" id="ready-to-bill" name="readyToBill">
+            <span class="toggle-slider"></span>
+          </label>
+          <div>
+            <div class="toggle-label" id="t-ready">Ready to Bill</div>
+            <div class="toggle-sub" id="t-ready-sub">Mark this job phase as billable</div>
+          </div>
+        </div>
+      </div>
+
+      <button type="submit" class="btn-submit" id="submit-btn">Submit Report</button>
+    </form>
+  </div>
+
+  <div id="success-screen">
+    <div class="success-icon">✓</div>
+    <div class="success-title" id="t-success">Report Submitted!</div>
+    <div class="success-sub" id="success-detail"></div>
+    <button class="btn-new" id="t-another" onclick="resetForm()">Submit Another</button>
+  </div>
+</div>
+
+<script>
+// ══ CONFIG ══════════════════════════════════════════════════════════
+const SB_URL = 'https://ymazyaultrqtlqbxtmwr.supabase.co';
+const SB_KEY = 'sb_publishable_6AuvX_KJBueiHY9C3dQHBg_C7ueqQ2V';
+
+// Per-person page. ?who=colton|rylon|plomo (defaults to colton).
+const PEOPLE = {
+  colton: { name:'COLTON', lang:'en', canAddType:true  },
+  rylon:  { name:'RYLON',  lang:'en', canAddType:false },
+  plomo:  { name:'PLOMO',  lang:'es', canAddType:false }
+};
+const who = (new URLSearchParams(location.search).get('who') || 'colton').toLowerCase();
+const ME = PEOPLE[who] || PEOPLE.colton;
+const SUBMITTER = ME.name.charAt(0) + ME.name.slice(1).toLowerCase(); // "Colton"
+const LANG = ME.lang;
+const KEY_RECENT = 'gs_recent_' + who;
+
+const STR = {
+  en: {
+    selectJob:'Select Job', addJob:'+ Add New Job', addJobTitle:'Add New Job',
+    jobName:'Job Name', city:'City', client:'Client / Contractor', active:'Active',
+    activeSub:'Show in job dropdown', saveJob:'Save Job', headerSub:'Daily Field Report',
+    where:'Where', date:'Date', jobLoc:'Job / Location', selectJobPh:'Select job / location...',
+    searchPh:'Search by name, city, or client...', workToday:'Work Completed Today',
+    workType:'Work Type', qty:'Qty', item:'Item', optional:'optional', none:'none',
+    selectType:'Select work type...', oneoff:'✎ One-off / other…', oneoffPh:'Describe the work',
+    addWork:'+ Add Work Type', newType:'+ New work type', createType:'Create work type',
+    materials:'Materials', concrete:'Concrete Ordered (yards)', notes:'Notes',
+    extra:'Extra Work / Additional Info', issues:'Issues / Delays', billing:'Billing',
+    ready:'Ready to Bill', readySub:'Mark this job phase as billable',
+    submit:'Submit Report', submitting:'Submitting...', success:'Report Submitted!',
+    another:'Submit Another', nearby:'📍 Nearby', recent:'🕐 Recently Used',
+    allActive:'All Active Jobs', noMatch:'No jobs match',
+    errJob:'Please select a job.', errWork:'Please add at least one work type.',
+    errSaved:'Saved', submitted:(n)=>`${n} work item${n===1?'':'s'} logged.`
+  },
+  es: {
+    selectJob:'Seleccionar Trabajo', addJob:'+ Agregar Trabajo', addJobTitle:'Agregar Trabajo',
+    jobName:'Nombre del Trabajo', city:'Ciudad', client:'Cliente / Contratista', active:'Activo',
+    activeSub:'Mostrar en la lista', saveJob:'Guardar', headerSub:'Reporte Diario de Campo',
+    where:'Trabajo y Fecha', date:'Fecha', jobLoc:'Trabajo / Lugar', selectJobPh:'Seleccionar trabajo...',
+    searchPh:'Buscar por nombre, ciudad o cliente...', workToday:'Trabajo de Hoy',
+    workType:'Tipo de Trabajo', qty:'Cant.', item:'Ítem', optional:'opcional', none:'ninguno',
+    selectType:'Seleccionar tipo...', oneoff:'✎ Otro / especial…', oneoffPh:'Describe el trabajo',
+    addWork:'+ Agregar Tipo', newType:'+ Nuevo tipo', createType:'Crear tipo',
+    materials:'Materiales', concrete:'Concreto Pedido (yardas)', notes:'Notas',
+    extra:'Trabajo Extra / Info Adicional', issues:'Problemas / Retrasos', billing:'Facturación',
+    ready:'Listo para Facturar', readySub:'Marcar esta fase como facturable',
+    submit:'Enviar Reporte', submitting:'Enviando...', success:'¡Reporte Enviado!',
+    another:'Enviar Otro', nearby:'📍 Cerca', recent:'🕐 Usado Recientemente',
+    allActive:'Todos los Trabajos Activos', noMatch:'Sin resultados',
+    errJob:'Por favor selecciona un trabajo.', errWork:'Agrega al menos un tipo de trabajo.',
+    errSaved:'Guardado', submitted:(n)=>`${n} artículo${n===1?'':'s'} registrado${n===1?'':'s'}.`
+  }
+}[LANG];
+
+// Fallback work types if the price list can't be fetched (offline).
+const FALLBACK_TYPES = [
+  { g:'Machine Curb Slip', items:['Curb Slip 30" Modified','Curb Slip 30" High Back','Curb Slip 24" Modified','Curb Slip 24" High Back','Type Q Median Curb'] },
+  { g:'Tie Ups / Handset', items:['Tie Up / Handset 30"','Tie Up / Handset 24"','Single Box','Double Box'] },
+  { g:'Flatwork', items:['Flatwork 4"','Flatwork 5"','Flatwork 6"'] },
+  { g:'Sidewalk', items:['Sidewalk 4"','Sidewalk 5"','Sidewalk 6"'] },
+  { g:'Drive Approaches', items:['Drive Approach 4"','Drive Approach 5"'] },
+  { g:'Specialty', items:['Shading Add-On','Waterway 9"'] },
+  { g:'ADA Ramps', items:["ADA Ramp 4' Plastic","ADA Ramp 8' Plastic",'ADA Ramp 2 Tile Cast','ADA Ramp 4 Tile Cast','ADA Ramp 5 Tile Cast'] },
+  { g:'Repairs', items:['Curb Repair (10 LF section)','Sidewalk Repair (5 LF section)','Electrical Box Skirt','Fire Hydrant Pad','Mailbox Pad'] },
+  { g:'Other', items:['MOB Fee','Other – see notes'] }
+];
+const FALLBACK_UNITS = {'Curb Slip 30" Modified':'LF','Curb Slip 30" High Back':'LF','Curb Slip 24" Modified':'LF','Curb Slip 24" High Back':'LF','Type Q Median Curb':'LF','Tie Up / Handset 30"':'LF','Tie Up / Handset 24"':'LF','Flatwork 4"':'SF','Flatwork 5"':'SF','Flatwork 6"':'SF','Sidewalk 4"':'SF','Sidewalk 5"':'SF','Sidewalk 6"':'SF','Drive Approach 4"':'SF','Drive Approach 5"':'SF','Shading Add-On':'SF','Waterway 9"':'SF','Single Box':'EA','Double Box':'EA',"ADA Ramp 4' Plastic":'EA',"ADA Ramp 8' Plastic":'EA','ADA Ramp 2 Tile Cast':'EA','ADA Ramp 4 Tile Cast':'EA','ADA Ramp 5 Tile Cast':'EA','Curb Repair (10 LF section)':'EA','Sidewalk Repair (5 LF section)':'EA','Electrical Box Skirt':'EA','Fire Hydrant Pad':'EA','Mailbox Pad':'EA','MOB Fee':'EA'};
+
+const CITY_COORDS = {
+  'lehi':[40.3916,-111.8508],'salem':[40.0594,-111.6725],'nephi':[39.7105,-111.8333],
+  'provo':[40.2338,-111.6585],'orem':[40.2969,-111.6946],'american fork':[40.3769,-111.7963],
+  'spanish fork':[40.1149,-111.6547],'springville':[40.1649,-111.6113],'payson':[40.0444,-111.7327],
+  'salt lake city':[40.7608,-111.8910],'sandy':[40.5649,-111.8388],'draper':[40.5246,-111.8638],
+  'south jordan':[40.5621,-111.9296],'west jordan':[40.6097,-111.9391],'woodland hills':[40.0113,-111.6480],
+  'saratoga springs':[40.3488,-111.9058],'eagle mountain':[40.3138,-112.0063],
+  'highland':[40.4302,-111.7963],'alpine':[40.4530,-111.7741],'vineyard':[40.3024,-111.7560],
+  'lindon':[40.3430,-111.7197],'bluffdale':[40.4849,-111.9382],'riverton':[40.5218,-111.9391],
+  'herriman':[40.5138,-112.0327],'cedar hills':[40.4108,-111.7641]
+};
+
+// ══ STATE ══
+let allJobs = [], nearbyJobs = [], selectedJob = null, selectedClient = null;
+let recentNames = JSON.parse(localStorage.getItem(KEY_RECENT) || '[]');
+let geoLat = null, geoLon = null;
+let WORK_TYPES = FALLBACK_TYPES, WORK_UNITS = Object.assign({}, FALLBACK_UNITS);
+let workItemCount = 3;
+const MAX_WORK_ITEMS = 8;
+
+// ══ HELPERS ══
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+async function rpc(fn, body){
+  const res = await fetch(SB_URL + '/rest/v1/rpc/' + fn, {
+    method:'POST',
+    headers:{ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY, 'Content-Type':'application/json' },
+    body: JSON.stringify(body || {})
+  });
+  if (!res.ok) throw new Error('RPC ' + fn + ' ' + res.status + ': ' + (await res.text()));
+  return res.json();
+}
+
+// ══ i18n apply ══
+function applyStrings(){
+  document.documentElement.lang = LANG;
+  document.getElementById('header-name').textContent = ME.name;
+  const set = (id,txt)=>{ const el=document.getElementById(id); if(el) el.textContent = txt; };
+  set('t-select-job', STR.selectJob); set('t-add-job', STR.addJob); set('t-add-job-title', STR.addJobTitle);
+  set('t-job-name-lbl', STR.jobName); set('t-city-lbl', STR.city); set('t-client-lbl', STR.client);
+  set('t-active-lbl', STR.active); set('t-active-sub', STR.activeSub); set('t-header-sub', STR.headerSub);
+  set('t-where', STR.where); set('t-date', STR.date); set('t-job-loc', STR.jobLoc);
+  set('t-work-today', STR.workToday); set('t-materials', STR.materials); set('t-concrete', STR.concrete);
+  set('t-notes', STR.notes); set('t-extra', STR.extra); set('t-issues', STR.issues);
+  set('t-billing', STR.billing); set('t-ready', STR.ready); set('t-ready-sub', STR.readySub);
+  set('t-success', STR.success); set('t-another', STR.another);
+  document.getElementById('save-job-btn').textContent = STR.saveJob;
+  document.getElementById('submit-btn').textContent = STR.submit;
+  document.getElementById('add-work-btn').textContent = STR.addWork;
+  document.getElementById('new-type-btn').textContent = STR.newType;
+  document.getElementById('nt-save').textContent = STR.createType;
+  document.getElementById('job-display').textContent = STR.selectJobPh;
+  document.getElementById('job-search').placeholder = STR.searchPh;
+  document.title = 'Grindstone – ' + ME.name.charAt(0) + ME.name.slice(1).toLowerCase();
+  if (ME.canAddType) document.getElementById('new-type-btn').style.display = 'block';
+}
+
+// ══ INIT ══
+document.getElementById('report-date').value = new Date().toISOString().split('T')[0];
+applyStrings();
+buildWorkItems();
+loadWorkTypes();
+loadJobs();
+requestGeo();
+
+// ══ WORK ITEMS ══
+function workItemHTML(n){
+  const head = n===1
+    ? `<div class="work-number">${STR.item} 1</div>`
+    : `<div class="work-number" style="display:flex;justify-content:space-between;align-items:center"><span>${STR.item} ${n} <span style="color:#666;font-weight:400;letter-spacing:0">(${STR.optional})</span></span><button type="button" class="remove-item-btn" onclick="removeWorkItem(${n})" title="Remove">✕</button></div>`;
+  return `<div class="work-item" id="work-item-${n}">${head}
+    <div class="work-row">
+      <div><label for="work-type-${n}">${STR.workType}</label><div class="select-wrap"><select id="work-type-${n}"></select></div></div>
+      <div><label class="qty-label" id="unit-label-${n}" for="qty-${n}">${STR.qty}</label><input type="number" id="qty-${n}" placeholder="0" min="0" step="any"></div>
+    </div>
+    <input type="text" id="oneoff-${n}" class="oneoff-input" style="display:none" placeholder="${STR.oneoffPh}">
+  </div>`;
+}
+function buildWorkItems(){
+  let h = '';
+  for (let n=1; n<=workItemCount; n++) h += workItemHTML(n);
+  document.getElementById('work-items-container').innerHTML = h;
+  for (let n=1; n<=workItemCount; n++) initWorkSel(n);
+}
+function initWorkSel(n){
+  const sel = document.getElementById('work-type-'+n);
+  if (!sel) return;
+  let h = (n===1) ? `<option value="">${STR.selectType}</option>` : `<option value="">— ${STR.none} —</option>`;
+  WORK_TYPES.forEach(wt => {
+    h += `<optgroup label="── ${esc(wt.g)} ──">`;
+    wt.items.forEach(i => { h += `<option>${esc(i)}</option>`; });
+    h += '</optgroup>';
+  });
+  h += `<optgroup label="──────"><option value="__oneoff__">${STR.oneoff}</option></optgroup>`;
+  const prev = sel.value;
+  sel.innerHTML = h;
+  if (prev) sel.value = prev;
+  const lbl = document.getElementById('unit-label-'+n);
+  const oneoff = document.getElementById('oneoff-'+n);
+  sel.onchange = function(){
+    if (this.value === '__oneoff__'){
+      if (oneoff) { oneoff.style.display='block'; oneoff.focus(); }
+      if (lbl) { lbl.textContent = STR.qty; lbl.style.color = 'var(--orange)'; }
+    } else {
+      if (oneoff) oneoff.style.display='none';
+      const unit = WORK_UNITS[this.value] || STR.qty;
+      if (lbl) { lbl.textContent = unit; lbl.style.color = this.value ? 'var(--orange)' : ''; }
+    }
+  };
+}
+function addWorkItem(){
+  if (workItemCount >= MAX_WORK_ITEMS) return;
+  workItemCount++;
+  const div = document.createElement('div');
+  div.innerHTML = workItemHTML(workItemCount).trim();
+  document.getElementById('work-items-container').appendChild(div.firstChild);
+  initWorkSel(workItemCount);
+  if (workItemCount >= MAX_WORK_ITEMS) document.getElementById('add-work-btn').style.display = 'none';
+}
+function removeWorkItem(n){
+  const el = document.getElementById('work-item-'+n); if (el) el.remove();
+  document.getElementById('add-work-btn').style.display = '';
+}
+
+// ══ NEW WORK TYPE (Colton only) ══
+function toggleNewType(){ document.getElementById('newtype-form').classList.toggle('open'); }
+async function saveNewType(){
+  const name = document.getElementById('nt-name').value.trim();
+  const unit = document.getElementById('nt-unit').value;
+  const cat  = document.getElementById('nt-cat').value.trim();
+  if (!name){ alert('Enter a work type name.'); return; }
+  const btn = document.getElementById('nt-save'); btn.disabled = true;
+  try {
+    const item = await rpc('add_price_item', { p_name:name, p_category:cat||null, p_unit:unit });
+    // reflect immediately
+    WORK_UNITS[item.name] = item.unit;
+    const g = item.category || 'Other';
+    let grp = WORK_TYPES.find(w => w.g === g);
+    if (!grp){ grp = { g, items:[] }; WORK_TYPES.push(grp); }
+    if (!grp.items.includes(item.name)) grp.items.push(item.name);
+    for (let n=1; n<=workItemCount; n++) initWorkSel(n);
+    document.getElementById('nt-name').value=''; document.getElementById('nt-cat').value='';
+    document.getElementById('newtype-form').classList.remove('open');
+  } catch(e){ alert(String(e.message||e)); }
+  finally { btn.disabled = false; }
+}
+
+// ══ WORK TYPES from price list ══
+async function loadWorkTypes(){
+  try {
+    const rows = await rpc('get_work_types', {});
+    if (Array.isArray(rows) && rows.length){
+      const groups = [];
+      const byCat = {};
+      const units = {};
+      rows.forEach(r => {
+        const g = r.category || 'Other';
+        if (!byCat[g]){ byCat[g] = { g, items:[] }; groups.push(byCat[g]); }
+        byCat[g].items.push(r.name);
+        units[r.name] = r.unit || 'EA';
+      });
+      WORK_TYPES = groups; WORK_UNITS = units;
+      for (let n=1; n<=workItemCount; n++) initWorkSel(n);
+    }
+  } catch(e){ /* keep fallback list */ }
+}
+
+// ══ JOBS ══
+async function loadJobs(){
+  try {
+    const rows = await rpc('get_active_jobs', {});
+    allJobs = Array.isArray(rows) ? rows : [];
+  } catch(e){ allJobs = []; }
+  renderJobList();
+}
+function requestGeo(){
+  if (!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(pos => {
+    geoLat = pos.coords.latitude; geoLon = pos.coords.longitude; computeNearby();
+  }, null, { timeout:6000, maximumAge:60000 });
+}
+function computeNearby(){
+  if (geoLat === null) return;
+  nearbyJobs = allJobs.filter(job => {
+    const c = CITY_COORDS[(job.city||'').toLowerCase().trim()];
+    if (!c) return false;
+    return Math.sqrt(Math.pow(geoLat-c[0],2)+Math.pow(geoLon-c[1],2)) < 0.28;
+  });
+  renderJobList(document.getElementById('job-search').value);
+}
+function openJobSheet(){
+  document.getElementById('job-sheet').classList.add('open');
+  document.getElementById('backdrop').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  document.getElementById('job-search').value = '';
+  renderJobList('');
+  setTimeout(() => document.getElementById('job-search').focus(), 350);
+}
+function openAddJobSheet(){
+  document.getElementById('job-sheet').classList.remove('open');
+  document.getElementById('add-job-sheet').classList.add('open');
+  setTimeout(() => document.getElementById('new-job-name').focus(), 350);
+}
+function closeAllSheets(){
+  document.getElementById('job-sheet').classList.remove('open');
+  document.getElementById('add-job-sheet').classList.remove('open');
+  document.getElementById('backdrop').classList.remove('open');
+  document.body.style.overflow = '';
+}
+function filterJobs(q){ renderJobList(q); }
+function renderJobList(filter = ''){
+  const list = document.getElementById('job-list');
+  const f = filter.toLowerCase().trim();
+  const matches = j => !f || j.name.toLowerCase().includes(f) || (j.city||'').toLowerCase().includes(f) || (j.client||'').toLowerCase().includes(f);
+  let html = '';
+  if (!f && nearbyJobs.length){
+    html += `<div class="section-label">${STR.nearby}</div>`;
+    nearbyJobs.forEach(job => html += jobItemHTML(job, '📍'));
+  }
+  const validRecent = recentNames.filter(n => allJobs.some(j => j.name === n));
+  if (!f && validRecent.length){
+    html += `<div class="section-label">${STR.recent}</div>`;
+    validRecent.forEach(name => { const job = allJobs.find(j=>j.name===name); if (job) html += jobItemHTML(job,'🕐'); });
+  }
+  const filtered = allJobs.filter(matches);
+  if (filtered.length === 0){
+    html += `<div class="job-empty">${STR.noMatch} "<strong>${esc(filter)}</strong>"</div>`;
+  } else {
+    if (!f) html += `<div class="section-label">${STR.allActive}</div>`;
+    filtered.forEach(job => html += jobItemHTML(job, '🏗'));
+  }
+  list.innerHTML = html;
+  list.querySelectorAll('.job-item').forEach(el => {
+    el.addEventListener('click', () => selectJob(el.dataset.name, el.dataset.city, el.dataset.client));
+  });
+}
+function jobItemHTML(job, icon){
+  const sel = selectedJob === job.name ? ' selected' : '';
+  return `<div class="job-item${sel}" data-name="${esc(job.name)}" data-city="${esc(job.city||'')}" data-client="${esc(job.client||'')}">
+    <div class="job-icon">${icon}</div>
+    <div><div class="job-name">${esc(job.name)}</div><div class="job-meta">${esc(job.city||'')}${job.client ? ' · '+esc(job.client) : ''}</div></div>
+  </div>`;
+}
+function selectJob(name, city, client){
+  selectedJob = name; selectedClient = client || null;
+  document.getElementById('job-value').value = name;
+  const display = document.getElementById('job-display');
+  display.textContent = name;
+  document.getElementById('job-trigger').classList.add('has-value');
+  closeAllSheets();
+  recentNames = [name, ...recentNames.filter(n => n !== name)].slice(0, 3);
+  localStorage.setItem(KEY_RECENT, JSON.stringify(recentNames));
+}
+
+// ══ ADD JOB ══
+async function saveNewJob(){
+  const name = document.getElementById('new-job-name').value.trim();
+  const city = document.getElementById('new-job-city').value.trim();
+  const client = document.getElementById('new-job-client').value.trim();
+  const active = document.getElementById('new-job-active').checked;
+  if (!name){ alert(STR.jobName); return; }
+  const btn = document.getElementById('save-job-btn'); btn.disabled = true;
+  try {
+    await rpc('add_field_job', { p_name:name, p_city:city, p_client:client, p_status: active ? 'active' : 'inactive' });
+    const job = { name, city, client, status: active ? 'active':'inactive' };
+    allJobs.push(job);
+    ['new-job-name','new-job-city','new-job-client'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('new-job-active').checked = true;
+    closeAllSheets();
+    selectJob(name, city, client);
+  } catch(e){ alert(String(e.message||e)); }
+  finally { btn.disabled = false; }
+}
+
+// ══ SUBMIT ══
+document.getElementById('daily-form').addEventListener('submit', async function(e){
+  e.preventDefault();
+  const errBanner = document.getElementById('error-banner');
+  errBanner.style.display = 'none';
+  const job = document.getElementById('job-value').value;
+  if (!job){ showError(STR.errJob); return; }
+
+  const items = [];
+  for (let n=1; n<=MAX_WORK_ITEMS; n++){
+    const sel = document.getElementById('work-type-'+n);
+    if (!sel) continue;
+    const qtyEl = document.getElementById('qty-'+n);
+    const qty = qtyEl ? Number(qtyEl.value) : 0;
+    let productName = sel.value;
+    let unit = WORK_UNITS[productName] || '';
+    if (productName === '__oneoff__'){
+      const off = document.getElementById('oneoff-'+n);
+      productName = off ? off.value.trim() : '';
+      unit = '';
+    }
+    if (!productName || !qty) continue;
+    items.push({ product_name: productName, quantity: qty, unit: unit });
+  }
+  if (!items.length){ showError(STR.errWork); return; }
+
+  const payload = {
+    job_name: job,
+    log_date: document.getElementById('report-date').value || null,
+    submitted_by: SUBMITTER,
+    client: selectedClient || null,
+    concrete_yards: document.getElementById('concrete-yards').value ? Number(document.getElementById('concrete-yards').value) : null,
+    notes: document.getElementById('extra-notes').value || null,
+    issues_delays: document.getElementById('issues-delays').value || null,
+    ready_to_bill: document.getElementById('ready-to-bill').checked,
+    items: items
+  };
+
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>' + STR.submitting;
+  try {
+    await rpc('sync_daily_log', { payload: payload });
+    showSuccess(items.length);
+  } catch(err){
+    showError(String(err.message || err));
+    btn.disabled = false; btn.textContent = STR.submit;
+  }
+});
+
+function showError(msg){
+  const b = document.getElementById('error-banner');
+  b.textContent = msg; b.style.display = 'block';
+  window.scrollTo({ top:0, behavior:'smooth' });
+}
+function showSuccess(n){
+  document.getElementById('form-section').style.display = 'none';
+  document.getElementById('success-detail').textContent = STR.submitted(n);
+  document.getElementById('success-screen').style.display = 'block';
+  window.scrollTo({ top:0, behavior:'smooth' });
+}
+function resetForm(){
+  document.getElementById('daily-form').reset();
+  document.getElementById('report-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('job-display').textContent = STR.selectJobPh;
+  document.getElementById('job-trigger').classList.remove('has-value');
+  document.getElementById('job-value').value = '';
+  selectedJob = null; selectedClient = null;
+  workItemCount = 3; buildWorkItems();
+  document.getElementById('add-work-btn').style.display = '';
+  const btn = document.getElementById('submit-btn'); btn.disabled = false; btn.textContent = STR.submit;
+  document.getElementById('success-screen').style.display = 'none';
+  document.getElementById('form-section').style.display = 'block';
+}
+</script>
+</body>
+</html>
