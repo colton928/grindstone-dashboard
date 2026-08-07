@@ -188,6 +188,53 @@ export async function deleteDailyLog(id: string): Promise<void> {
   if (error) throw error
 }
 
+// Move a whole daily report to a different job. Billing follows the job (which
+// follows its client), so this re-bills the report to the target job's client —
+// used for backcharges (e.g. a repair billed to whoever broke it, not the
+// phase's original client). Point it at a dedicated backcharge job.
+export async function moveDailyLogToJob(logId: string, jobId: string): Promise<void> {
+  const { error } = await supabase.from('daily_logs').update({ job_id: jobId }).eq('id', logId)
+  if (error) throw error
+}
+
+// Peel a single work item onto another job when a report mixes work billed to
+// different parties. The item lands on the target job's report for the same
+// day + submitter (reused if one exists, else a fresh report is created); the
+// rest of the original report — its other items, notes, concrete — stays put.
+export async function moveDailyLogItemToJob(
+  itemId: string,
+  targetJobId: string,
+  logDate: string,
+  submittedBy: string | null,
+): Promise<void> {
+  // Reuse an existing report on the target job for the same day + submitter,
+  // so moving several items doesn't scatter them across duplicate reports.
+  let find = supabase
+    .from('daily_logs')
+    .select('id')
+    .eq('job_id', targetJobId)
+    .eq('log_date', logDate)
+    .limit(1)
+  find = submittedBy == null ? find.is('submitted_by', null) : find.eq('submitted_by', submittedBy)
+  const { data: existing, error: findErr } = await find
+  if (findErr) throw findErr
+  let targetLogId = existing?.[0]?.id as string | undefined
+  if (!targetLogId) {
+    const { data, error } = await supabase
+      .from('daily_logs')
+      .insert({ job_id: targetJobId, log_date: logDate, submitted_by: submittedBy })
+      .select('id')
+      .single()
+    if (error) throw error
+    targetLogId = (data as { id: string }).id
+  }
+  const { error: moveErr } = await supabase
+    .from('daily_log_items')
+    .update({ daily_log_id: targetLogId })
+    .eq('id', itemId)
+  if (moveErr) throw moveErr
+}
+
 export async function updateDailyLogItem(
   id: string,
   patch: { product_id?: string | null; quantity?: number },

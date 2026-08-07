@@ -610,6 +610,31 @@
   color: var(--accent);
   font-weight: 600;
 }
+.logitem-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.logitem-move {
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  opacity: 0.75;
+}
+/* Inline "move to another job" picker on a report card. */
+.move-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0 4px;
+  padding: 10px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+.move-panel select {
+  width: 100%;
+}
 .logcard-foot {
   display: flex;
   flex-wrap: wrap;

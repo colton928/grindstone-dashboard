@@ -6,15 +6,18 @@ import {
   deleteDailyLog,
   deleteDailyLogItem,
   fetchAllDailyLogs,
+  fetchAllJobs,
   fetchClients,
   fetchPriceList,
+  moveDailyLogItemToJob,
+  moveDailyLogToJob,
   setDailyLogReviewed,
   updateDailyLog,
   updateDailyLogItem,
 } from '../lib/queries'
 import { formatDate, formatQty } from '../lib/progress'
 import { logNeedsReview as needsReview } from '../lib/review'
-import type { Client, DailyLogFull, PriceListItem } from '../lib/types'
+import type { Client, DailyLogFull, DailyLogItem, JobWithClient, PriceListItem } from '../lib/types'
 
 const d10 = (s: string | null | undefined) => (s ? s.slice(0, 10) : '')
 
@@ -23,9 +26,12 @@ export function DailyLog() {
   const [logs, setLogs] = useState<DailyLogFull[]>([])
   const [priceList, setPriceList] = useState<PriceListItem[]>([])
   const [clients, setClients] = useState<Client[]>([])
+  const [jobs, setJobs] = useState<JobWithClient[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
+  // A pending "move to another job" action (whole report or one work item).
+  const [move, setMove] = useState<{ log: DailyLogFull; item?: DailyLogItem } | null>(null)
 
   // Filters live in the URL so deep-links from the job view work + are shareable.
   const fJob = params.get('job') ?? ''
@@ -46,14 +52,16 @@ export function DailyLog() {
   async function load() {
     try {
       setLoading(true)
-      const [logData, priceData, clientData] = await Promise.all([
+      const [logData, priceData, clientData, jobData] = await Promise.all([
         fetchAllDailyLogs(),
         fetchPriceList(),
         fetchClients(),
+        fetchAllJobs(),
       ])
       setLogs(logData)
       setPriceList(priceData)
       setClients(clientData)
+      setJobs(jobData)
       setError(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -117,6 +125,23 @@ export function DailyLog() {
   async function markReviewed(id: string, reviewed: boolean) {
     await setDailyLogReviewed(id, reviewed)
     window.dispatchEvent(new Event('logs-reviewed')) // refresh the tab badge
+    await load()
+  }
+
+  // Reassign the pending report (or single item) to `targetJobId`, then refresh.
+  async function confirmMove(targetJobId: string) {
+    if (!move) return
+    if (move.item) {
+      await moveDailyLogItemToJob(
+        move.item.id,
+        targetJobId,
+        d10(move.log.log_date),
+        move.log.submitted_by ?? null,
+      )
+    } else {
+      await moveDailyLogToJob(move.log.id, targetJobId)
+    }
+    setMove(null)
     await load()
   }
 
@@ -253,8 +278,30 @@ export function DailyLog() {
                     >
                       Edit
                     </button>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      onClick={() => setMove({ log })}
+                      title="Bill this whole report to a different job"
+                    >
+                      Move
+                    </button>
                   </div>
                 </div>
+
+                {move?.log.id === log.id && (
+                  <MovePanel
+                    jobs={jobs}
+                    currentJobId={log.job?.id ?? null}
+                    label={
+                      move.item
+                        ? `Move line "${move.item.product_id ? productName.get(move.item.product_id) ?? 'Unknown' : move.item.description || 'One-off'}" to job:`
+                        : 'Move this entire report to job:'
+                    }
+                    onConfirm={confirmMove}
+                    onCancel={() => setMove(null)}
+                  />
+                )}
 
                 <div className="logitems">
                   {log.items.length === 0 ? (
@@ -271,11 +318,21 @@ export function DailyLog() {
                             : it.description || 'One-off line'}
                           {!it.product_id && <span className="pill pill-warn oneoff-pill">One-off</span>}
                         </span>
-                        <span className="num">
-                          {formatQty(Number(it.quantity))}
-                          {(it.product_id ? productUnit.get(it.product_id) : it.unit)
-                            ? ` ${it.product_id ? productUnit.get(it.product_id) : it.unit}`
-                            : ''}
+                        <span className="logitem-right">
+                          <span className="num">
+                            {formatQty(Number(it.quantity))}
+                            {(it.product_id ? productUnit.get(it.product_id) : it.unit)
+                              ? ` ${it.product_id ? productUnit.get(it.product_id) : it.unit}`
+                              : ''}
+                          </span>
+                          <button
+                            type="button"
+                            className="btn-ghost logitem-move"
+                            onClick={() => setMove({ log, item: it })}
+                            title="Bill just this line to a different job"
+                          >
+                            Move
+                          </button>
                         </span>
                       </div>
                     ))
@@ -295,6 +352,73 @@ export function DailyLog() {
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// ─────────────────────── Move to another job ───────────────────────
+// Reassigns a report (or one work item) to a different job so it bills to that
+// job's client — for backcharges where a phase's work is paid by someone other
+// than the phase's original client (e.g. a repair billed to whoever broke it).
+function MovePanel({
+  jobs,
+  currentJobId,
+  label,
+  onConfirm,
+  onCancel,
+}: {
+  jobs: JobWithClient[]
+  currentJobId: string | null
+  label: string
+  onConfirm: (jobId: string) => Promise<void>
+  onCancel: () => void
+}) {
+  const [jobId, setJobId] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const options = useMemo(
+    () => [...jobs].filter((j) => j.id !== currentJobId).sort((a, b) => a.name.localeCompare(b.name)),
+    [jobs, currentJobId],
+  )
+
+  async function go() {
+    if (!jobId) {
+      setErr('Pick a job to move to.')
+      return
+    }
+    setBusy(true)
+    setErr(null)
+    try {
+      await onConfirm(jobId)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e))
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="move-panel">
+      <span className="label">{label}</span>
+      <select value={jobId} onChange={(e) => setJobId(e.target.value)} disabled={busy}>
+        <option value="">— choose job —</option>
+        {options.map((j) => (
+          <option key={j.id} value={j.id}>
+            {j.name}
+            {j.client?.name ? ` — ${j.client.name}` : ''}
+            {j.status !== 'active' ? ` (${j.status})` : ''}
+          </option>
+        ))}
+      </select>
+      {err && <p className="error-text">{err}</p>}
+      <div className="edit-actions">
+        <button type="button" className="btn-primary" disabled={busy} onClick={() => void go()}>
+          {busy ? 'Moving…' : 'Move'}
+        </button>
+        <button type="button" className="btn-ghost" disabled={busy} onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
     </div>
   )
 }
