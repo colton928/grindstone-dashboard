@@ -622,6 +622,17 @@
   font-style: italic;
 }
 
+/* Price Sheet: category header row with an inline Rename control. */
+.pricecat-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.pricecat-head h2 {
+  margin-bottom: 0;
+}
+
 /* ───────────────────────── Daily Log: editor ───────────────────────── */
 .logcard-editing {
   border-color: var(--accent);

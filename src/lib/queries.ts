@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { logNeedsReview } from './review'
 import type {
   Client,
   ClientPriceRule,
@@ -167,16 +168,18 @@ export async function setDailyLogReviewed(id: string, reviewed: boolean): Promis
   if (error) throw error
 }
 
-// Count of reports that need review: have a note or issue and aren't reviewed.
-// Powers the badge on the Logs tab.
+// Count of reports that need review — powers the badge on the Logs tab. Uses the
+// SAME logNeedsReview predicate as the Logs list so the badge always equals the
+// number of cards that actually show a "Mark reviewed" button. (A DB-side
+// `notes IS NOT NULL` count over-counts whitespace-only notes, which the list
+// trims away and can't clear — that made the badge only ever grow.)
 export async function countDailyLogsNeedingReview(): Promise<number> {
-  const { count, error } = await supabase
+  const { data, error } = await supabase
     .from('daily_logs')
-    .select('id', { count: 'exact', head: true })
+    .select('reviewed_at, notes, issues_delays')
     .is('reviewed_at', null)
-    .or('notes.not.is.null,issues_delays.not.is.null')
   if (error) throw error
-  return count ?? 0
+  return (data ?? []).filter(logNeedsReview).length
 }
 
 export async function deleteDailyLog(id: string): Promise<void> {
@@ -581,6 +584,38 @@ export async function addPriceItem(
   return data as PriceListItem
 }
 
+// Add an unpriced ($0) work type on the fly (from the Daily Log editor). Goes
+// through the same add_price_item RPC the field app uses, so it dedupes by
+// normalized name — no duplicate catalog rows if the type already exists.
+export async function addWorkType(
+  name: string,
+  category: string | null,
+  unit: string,
+): Promise<PriceListItem> {
+  const { data, error } = await supabase.rpc('add_price_item', {
+    p_name: name,
+    p_category: category,
+    p_unit: unit,
+  })
+  if (error) throw error
+  const r = data as {
+    id: string
+    name: string
+    category: string | null
+    unit: string
+    default_rate: number
+  }
+  return {
+    id: r.id,
+    name: r.name,
+    category: r.category,
+    unit: r.unit,
+    default_rate: r.default_rate,
+    active: true,
+    sort_order: null,
+  }
+}
+
 export type PriceItemPatch = Partial<
   Pick<PriceListItem, 'name' | 'category' | 'unit' | 'default_rate' | 'active'>
 >
@@ -591,6 +626,26 @@ export async function updatePriceItem(id: string, patch: PriceItemPatch): Promis
     .update({ ...patch, updated_at: new Date().toISOString() })
     .eq('id', id)
   if (error) throw error
+}
+
+// Rename a whole category: move every price_list product in `oldCat` to `newCat`,
+// and keep any client_price_rules that key off that category string in sync — they
+// match price_list.category BY STRING (e.g. Noland's +$0.30 on Flatwork/Sidewalk/
+// Drive Approach), so without this the pricing rule would silently stop applying.
+// Both writes go through the authenticated session (authed_all RLS on both tables).
+export async function renameCategory(oldCat: string, newCat: string): Promise<void> {
+  const clean = newCat.trim()
+  if (!clean || clean === oldCat) return
+  const p = await supabase
+    .from('price_list')
+    .update({ category: clean, updated_at: new Date().toISOString() })
+    .eq('category', oldCat)
+  if (p.error) throw p.error
+  const r = await supabase
+    .from('client_price_rules')
+    .update({ category: clean })
+    .eq('category', oldCat)
+  if (r.error) throw r.error
 }
 
 // ─────────────────────── Schedule tab (Phase 4) ───────────────────────

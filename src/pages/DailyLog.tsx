@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   addDailyLogItem,
-  addPriceItem,
+  addWorkType,
   deleteDailyLog,
   deleteDailyLogItem,
   fetchAllDailyLogs,
@@ -13,13 +13,10 @@ import {
   updateDailyLogItem,
 } from '../lib/queries'
 import { formatDate, formatQty } from '../lib/progress'
+import { logNeedsReview as needsReview } from '../lib/review'
 import type { Client, DailyLogFull, PriceListItem } from '../lib/types'
 
 const d10 = (s: string | null | undefined) => (s ? s.slice(0, 10) : '')
-
-// A report needs review when it carries a note or issue and hasn't been cleared.
-const needsReview = (l: DailyLogFull): boolean =>
-  !l.reviewed_at && !!((l.notes && l.notes.trim()) || (l.issues_delays && l.issues_delays.trim()))
 
 export function DailyLog() {
   const [params, setParams] = useSearchParams()
@@ -104,12 +101,16 @@ export function DailyLog() {
   // Add a brand-new work type (price_list product) on the fly while editing a
   // report — for work the crew did that isn't in the price sheet yet. Rate seeds
   // at $0 (set it later in Price Sheet); the point here is logging the quantity.
-  // NOTE: this only adds it to the dashboard's price list — the field Daily Report
-  // app reads work types from the Google Sheet, so reflecting it there is the
-  // Phase-5 cutover item (parallel-run: don't touch the daily app yet).
-  async function createWorkType(name: string, unit: string): Promise<PriceListItem> {
-    const item = await addPriceItem({ name, category: null, unit: unit || 'EA', default_rate: 0 })
-    setPriceList((prev) => [...prev, item])
+  // Goes through the shared add_price_item RPC, so the new type shows up in the
+  // Price Sheet tab AND the field Daily Report app (both read the same price_list),
+  // and dedupes by normalized name so it won't create a duplicate catalog row.
+  async function createWorkType(
+    name: string,
+    category: string | null,
+    unit: string,
+  ): Promise<PriceListItem> {
+    const item = await addWorkType(name, category, unit || 'EA')
+    setPriceList((prev) => (prev.some((p) => p.id === item.id) ? prev : [...prev, item]))
     return item
   }
 
@@ -315,7 +316,7 @@ function LogEditor({
 }: {
   log: DailyLogFull
   priceList: PriceListItem[]
-  onCreateWorkType: (name: string, unit: string) => Promise<PriceListItem>
+  onCreateWorkType: (name: string, category: string | null, unit: string) => Promise<PriceListItem>
   onCancel: () => void
   onSaved: () => void | Promise<void>
 }) {
@@ -340,7 +341,17 @@ function LogEditor({
   // then drops it in as a new work item on this report.
   const [ntOpen, setNtOpen] = useState(false)
   const [ntName, setNtName] = useState('')
+  const [ntCat, setNtCat] = useState('')
   const [ntUnit, setNtUnit] = useState('EA')
+
+  // Existing categories (from the current price list) to suggest in the picker.
+  const categories = useMemo(
+    () =>
+      [...new Set(priceList.map((p) => p.category).filter((c): c is string => !!c))].sort((a, b) =>
+        a.localeCompare(b),
+      ),
+    [priceList],
+  )
 
   async function addNewType() {
     if (!ntName.trim()) {
@@ -348,9 +359,10 @@ function LogEditor({
       return
     }
     try {
-      const p = await onCreateWorkType(ntName.trim(), ntUnit.trim() || 'EA')
+      const p = await onCreateWorkType(ntName.trim(), ntCat.trim() || null, ntUnit.trim() || 'EA')
       setItems((prev) => [...prev, { product_id: p.id, quantity: '0' }])
       setNtName('')
+      setNtCat('')
       setNtUnit('EA')
       setNtOpen(false)
       setErr(null)
@@ -488,26 +500,43 @@ function LogEditor({
           </button>
         </div>
         {ntOpen && (
-          <div className="edit-item">
-            <input
-              type="text"
-              placeholder="New work type name"
-              value={ntName}
-              autoFocus
-              onChange={(e) => setNtName(e.target.value)}
-            />
-            <input
-              type="text"
-              className="edit-qty"
-              placeholder="unit"
-              aria-label="unit"
-              value={ntUnit}
-              onChange={(e) => setNtUnit(e.target.value)}
-            />
-            <button type="button" className="btn-ghost" onClick={() => void addNewType()}>
-              Add
-            </button>
-          </div>
+          <>
+            <div className="edit-item">
+              <input
+                type="text"
+                placeholder="New work type name"
+                value={ntName}
+                autoFocus
+                onChange={(e) => setNtName(e.target.value)}
+              />
+              <input
+                type="text"
+                className="edit-qty"
+                placeholder="unit"
+                aria-label="unit"
+                value={ntUnit}
+                onChange={(e) => setNtUnit(e.target.value)}
+              />
+            </div>
+            <div className="edit-item">
+              <input
+                type="text"
+                list="worktype-categories"
+                placeholder="Category (e.g. Curb, Flatwork) — optional"
+                aria-label="category"
+                value={ntCat}
+                onChange={(e) => setNtCat(e.target.value)}
+              />
+              <datalist id="worktype-categories">
+                {categories.map((c) => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
+              <button type="button" className="btn-ghost" onClick={() => void addNewType()}>
+                Add
+              </button>
+            </div>
+          </>
         )}
       </div>
 
