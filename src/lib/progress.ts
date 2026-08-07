@@ -170,10 +170,15 @@ export function formatQty(n: number): string {
 }
 
 export function formatMoney(n: number): string {
+  // Show exact cents when the amount has them (a $6.50 rate reads as $6.50, not
+  // a rounded $7), but keep whole-dollar amounts clean (no trailing .00 on big
+  // totals like $258,086).
+  const hasCents = Math.round(n * 100) % 100 !== 0
   return n.toLocaleString('en-US', {
     style: 'currency',
     currency: 'USD',
-    maximumFractionDigits: 0,
+    minimumFractionDigits: hasCents ? 2 : 0,
+    maximumFractionDigits: 2,
   })
 }
 
