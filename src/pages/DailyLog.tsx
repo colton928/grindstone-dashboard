@@ -16,6 +16,7 @@ import {
   updateDailyLogItem,
 } from '../lib/queries'
 import { formatDate, formatQty } from '../lib/progress'
+import { buildNameToProduct, resolveProductId } from '../lib/normalize'
 import { JobPicker } from '../components/JobPicker'
 import { logNeedsReview as needsReview } from '../lib/review'
 import type { Client, DailyLogFull, DailyLogItem, JobWithClient, PriceListItem } from '../lib/types'
@@ -93,6 +94,12 @@ export function DailyLog() {
 
   const reviewCount = useMemo(() => logs.filter(needsReview).length, [logs])
 
+  // Match a log item to the product filter the SAME way billing/job pages fold
+  // work together: an item counts if its product_id is the filter, OR it's a
+  // free-text line whose description normalizes to that product. So a "View
+  // daily logs" link from a billing line lands on every entry feeding it,
+  // including the unmatched free-text ones (e.g. "Other – see notes").
+  const nameToProduct = useMemo(() => buildNameToProduct(priceList), [priceList])
   const filtered = useMemo(() => {
     return logs.filter((l) => {
       if (fReview && !needsReview(l)) return false
@@ -100,10 +107,16 @@ export function DailyLog() {
       if (fClient && l.job?.client?.id !== fClient) return false
       if (fFrom && d10(l.log_date) < fFrom) return false
       if (fTo && d10(l.log_date) > fTo) return false
-      if (fProduct && !l.items.some((it) => it.product_id === fProduct)) return false
+      if (
+        fProduct &&
+        !l.items.some(
+          (it) => resolveProductId(it.product_id, it.description, nameToProduct) === fProduct,
+        )
+      )
+        return false
       return true
     })
-  }, [logs, fReview, fJob, fClient, fFrom, fTo, fProduct])
+  }, [logs, fReview, fJob, fClient, fFrom, fTo, fProduct, nameToProduct])
 
   const hasFilter = !!(fJob || fClient || fProduct || fFrom || fTo || fReview)
 

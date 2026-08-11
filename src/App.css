@@ -461,6 +461,26 @@
   color: var(--accent);
 }
 
+/* A whole billing line that links to its daily logs. */
+.line-link {
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 0.12s ease;
+}
+.line-link:hover,
+.line-link:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+.line-link:hover .line-logs,
+.line-link:focus-visible .line-logs {
+  color: var(--accent);
+}
+.logged-vs-hint {
+  margin: -4px 0 2px;
+}
+
 /* ───────────────────────── Form controls (normalize iOS) ───────────────────────── */
 .filter select,
 .filter input,

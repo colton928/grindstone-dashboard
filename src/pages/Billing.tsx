@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   addPriceItem,
   createInvoice,
@@ -446,9 +447,18 @@ function JobBillingDetail({
           </div>
 
           <h2>Work logged vs. billed</h2>
+          <p className="label logged-vs-hint">Tap a line to see the daily logs behind it (notes, issues).</p>
           <div className="lines">
             {billing.lines.map((l) => (
-              <div key={l.productId ?? l.description} className="line">
+              <Link
+                key={l.productId ?? l.description}
+                to={
+                  l.productId
+                    ? `/daily-log?job=${job.id}&product=${l.productId}`
+                    : `/daily-log?job=${job.id}`
+                }
+                className="line line-link"
+              >
                 <div className="line-top">
                   <span className="line-desc">{l.description}</span>
                   <span className="num label">@ {formatMoney(l.rate)}</span>
@@ -460,7 +470,8 @@ function JobBillingDetail({
                     {l.remainingQty > 0.005 ? `${formatQty(l.remainingQty)} to bill` : 'fully billed'}
                   </span>
                 </div>
-              </div>
+                <span className="line-logs label">View daily logs →</span>
+              </Link>
             ))}
           </div>
         </>
