@@ -8,6 +8,7 @@ import {
   fetchAllEstimates,
   fetchClientPriceRules,
   fetchClients,
+  fetchPriceBaseYear,
   fetchPriceList,
   replaceEstimateLines,
   updateEstimate,
@@ -16,7 +17,7 @@ import {
   type NewEstimateLine,
 } from '../lib/queries'
 import { LineItemPicker } from '../components/LineItemPicker'
-import { nextEstimateNumber, seedRate } from '../lib/estimate'
+import { nextEstimateNumber, rateForYear, seedRate } from '../lib/estimate'
 import { formatDate, formatMoney } from '../lib/progress'
 import type {
   Client,
@@ -57,6 +58,7 @@ export function Estimating() {
   const [estimates, setEstimates] = useState<EstimateFull[]>([])
   const [priceList, setPriceList] = useState<PriceListItem[]>([])
   const [rules, setRules] = useState<ClientPriceRule[]>([])
+  const [baseYear, setBaseYear] = useState<number>(new Date().getFullYear())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
@@ -69,16 +71,18 @@ export function Estimating() {
   async function load() {
     try {
       setLoading(true)
-      const [c, e, p, r] = await Promise.all([
+      const [c, e, p, r, by] = await Promise.all([
         fetchClients(),
         fetchAllEstimates(),
         fetchPriceList(),
         fetchClientPriceRules(),
+        fetchPriceBaseYear(),
       ])
       setClients(c)
       setEstimates(e)
       setPriceList(p)
       setRules(r)
+      setBaseYear(by)
       setError(null)
     } catch (err) {
       setError(errMsg(err))
@@ -102,6 +106,7 @@ export function Estimating() {
         clients={clients}
         priceList={priceList.filter((p) => p.active)}
         rules={rules}
+        baseYear={baseYear}
         existingNumbers={estimates.map((e) => e.estimate_number)}
         productName={productName}
         onCancel={() => {
@@ -322,6 +327,7 @@ function EstimateEditor({
   clients,
   priceList,
   rules,
+  baseYear,
   existingNumbers,
   productName,
   onCancel,
@@ -331,6 +337,7 @@ function EstimateEditor({
   clients: Client[]
   priceList: PriceListItem[]
   rules: ClientPriceRule[]
+  baseYear: number
   existingNumbers: (string | null)[]
   productName: Map<string, string>
   onCancel: () => void
@@ -349,6 +356,9 @@ function EstimateEditor({
   )
   const [estDate, setEstDate] = useState(editing?.estimate_date?.slice(0, 10) ?? today())
   const [notes, setNotes] = useState(editing?.notes ?? '')
+  // Which year's price seeds newly-added lines. New estimates default to next
+  // year (bidding forward); existing lines keep their locked rates regardless.
+  const [pricingYear, setPricingYear] = useState<number>(baseYear + 1)
   const [lines, setLines] = useState<DraftLine[]>(() =>
     editing
       ? editing.lines
@@ -396,9 +406,11 @@ function EstimateEditor({
       { product_id: null, description: '', unit: null, quantity: '0', rate: '0', adjustment_note: null },
     ])
 
-  // Attach a price-sheet item to a line, seeding its rate from the client rules.
+  // Attach a price-sheet item to a line, seeding its rate from the chosen
+  // pricing year (current vs. next) plus any client rules, which stack on top.
   const onSelectProduct = (i: number, p: PriceListItem) => {
-    const seeded = seedRate(p, jobRules)
+    const yearRate = rateForYear(p, pricingYear, baseYear)
+    const seeded = seedRate({ category: p.category, default_rate: yearRate }, jobRules)
     updateLine(i, {
       product_id: p.id,
       description: seedDescription(p.name, seeded.lineLabel),
@@ -601,6 +613,14 @@ function EstimateEditor({
             <input type="date" value={estDate} onChange={(e) => setEstDate(e.target.value)} />
           </label>
         </div>
+
+        <label className="filter">
+          <span className="label">Pricing year (seeds new lines)</span>
+          <select value={pricingYear} onChange={(e) => setPricingYear(Number(e.target.value))}>
+            <option value={baseYear}>{baseYear} (current)</option>
+            <option value={baseYear + 1}>{baseYear + 1} (next year)</option>
+          </select>
+        </label>
 
         <div className="edit-items">
           <span className="label">Line items</span>

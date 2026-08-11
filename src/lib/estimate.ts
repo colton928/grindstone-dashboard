@@ -24,6 +24,18 @@ function ruleLineLabel(rule: ClientPriceRule): string | null {
   return null
 }
 
+// The starting rate for a product in a given pricing year. Base year uses the
+// current rate; a later year uses rate_next_year, falling back to the current
+// rate when that year hasn't been given its own number yet.
+export function rateForYear(
+  product: Pick<PriceListItem, 'default_rate' | 'rate_next_year'>,
+  year: number,
+  baseYear: number,
+): number {
+  if (year > baseYear && product.rate_next_year != null) return Number(product.rate_next_year)
+  return Number(product.default_rate)
+}
+
 export function seedRate(
   product: Pick<PriceListItem, 'category' | 'default_rate'>,
   clientRules: ClientPriceRule[],

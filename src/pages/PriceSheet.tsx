@@ -3,11 +3,14 @@ import {
   addPriceItem,
   fetchClientPriceRules,
   fetchClients,
+  fetchPriceBaseYear,
   fetchPriceList,
+  promotePricingYear,
   renameCategory,
   updatePriceItem,
   type PriceItemPatch,
 } from '../lib/queries'
+import { rateForYear } from '../lib/estimate'
 import { formatMoney } from '../lib/progress'
 import type { Client, ClientPriceRule, PriceListItem } from '../lib/types'
 
@@ -24,22 +27,29 @@ export function PriceSheet() {
   const [items, setItems] = useState<PriceListItem[]>([])
   const [rules, setRules] = useState<ClientPriceRule[]>([])
   const [clients, setClients] = useState<Client[]>([])
+  const [baseYear, setBaseYear] = useState<number>(new Date().getFullYear())
+  const [year, setYear] = useState<number>(new Date().getFullYear()) // which column we're viewing/editing
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showInactive, setShowInactive] = useState(false)
   const [adding, setAdding] = useState(false)
+  const [promoting, setPromoting] = useState(false)
 
   async function load() {
     try {
       setLoading(true)
-      const [priceData, ruleData, clientData] = await Promise.all([
+      const [priceData, ruleData, clientData, by] = await Promise.all([
         fetchPriceList(),
         fetchClientPriceRules(),
         fetchClients(),
+        fetchPriceBaseYear(),
       ])
       setItems(priceData)
       setRules(ruleData)
       setClients(clientData)
+      setBaseYear(by)
+      // Keep the viewed year valid (base or next) across reloads.
+      setYear((y) => (y === by || y === by + 1 ? y : by))
       setError(null)
     } catch (e) {
       setError(errMsg(e))
@@ -50,6 +60,9 @@ export function PriceSheet() {
   useEffect(() => {
     void load()
   }, [])
+
+  const nextYear = baseYear + 1
+  const viewingNext = year > baseYear
 
   const visible = showInactive ? items : items.filter((i) => i.active)
 
@@ -88,6 +101,25 @@ export function PriceSheet() {
     return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]))
   }, [visible])
 
+  async function promote() {
+    const ok = window.confirm(
+      `Roll ${nextYear} pricing into current?\n\n` +
+        `Every ${nextYear} rate becomes the new current price, ${nextYear + 1} starts blank, ` +
+        `and the current year becomes ${nextYear}. This does NOT touch any saved estimate. Continue?`,
+    )
+    if (!ok) return
+    setPromoting(true)
+    setError(null)
+    try {
+      await promotePricingYear()
+      await load()
+    } catch (e) {
+      setError(errMsg(e))
+    } finally {
+      setPromoting(false)
+    }
+  }
+
   if (loading) return <div className="page"><p className="muted">Loading price sheet…</p></div>
   if (error) return <div className="page"><p className="error-text">{error}</p></div>
 
@@ -96,6 +128,28 @@ export function PriceSheet() {
       <div className="job-detail-head">
         <h1>Price Sheet</h1>
         <p className="label">The starting-point rates that seed new estimates. Editing a rate here only affects future line items — saved estimates keep their locked rates. Work types, rates, and categories here are shared with the Daily Log and the field Daily Report app.</p>
+        <p className="label">
+          <strong>{baseYear}</strong> is the current price (what un-estimated jobs bill at). <strong>{nextYear}</strong> is next year's price — pick it in the estimate editor to bid at the new rates. Switch the year below to view or edit each.
+        </p>
+      </div>
+
+      <div className="bill-action-row">
+        <div className="seg">
+          <button
+            type="button"
+            className={year === baseYear ? 'btn-primary' : 'btn-ghost'}
+            onClick={() => setYear(baseYear)}
+          >
+            {baseYear}
+          </button>
+          <button
+            type="button"
+            className={viewingNext ? 'btn-primary' : 'btn-ghost'}
+            onClick={() => setYear(nextYear)}
+          >
+            {nextYear}
+          </button>
+        </div>
       </div>
 
       <div className="bill-action-row">
@@ -121,9 +175,20 @@ export function PriceSheet() {
           rows={rows}
           categories={categories}
           ruleClients={rulesByCategory.get(cat) ?? []}
+          year={year}
+          baseYear={baseYear}
           onChanged={load}
         />
       ))}
+
+      <div className="price-promote">
+        <p className="label">
+          When {nextYear} arrives, roll its prices into current so new work bills at the new rates.
+        </p>
+        <button type="button" className="btn-ghost" disabled={promoting} onClick={() => void promote()}>
+          {promoting ? 'Rolling…' : `Roll ${nextYear} pricing → current`}
+        </button>
+      </div>
     </div>
   )
 }
@@ -133,12 +198,16 @@ function CategoryGroup({
   rows,
   categories,
   ruleClients,
+  year,
+  baseYear,
   onChanged,
 }: {
   cat: string
   rows: PriceListItem[]
   categories: string[]
   ruleClients: string[]
+  year: number
+  baseYear: number
   onChanged: () => void | Promise<void>
 }) {
   const [renaming, setRenaming] = useState(false)
@@ -206,7 +275,8 @@ function CategoryGroup({
       )}
       <div className="lines">
         {rows.map((it) => (
-          <PriceRow key={it.id} item={it} categories={categories} onChanged={onChanged} />
+          // Key by year so switching the year toggle resets any open edit row.
+          <PriceRow key={`${it.id}-${year}`} item={it} categories={categories} year={year} baseYear={baseYear} onChanged={onChanged} />
         ))}
       </div>
     </div>
@@ -216,16 +286,28 @@ function CategoryGroup({
 function PriceRow({
   item,
   categories,
+  year,
+  baseYear,
   onChanged,
 }: {
   item: PriceListItem
   categories: string[]
+  year: number
+  baseYear: number
   onChanged: () => void | Promise<void>
 }) {
+  const viewingNext = year > baseYear
+  const shownRate = rateForYear(item, year, baseYear)
+  // The other year's rate + whether it actually differs (for the muted hint).
+  const otherYear = viewingNext ? baseYear : baseYear + 1
+  const otherRate = rateForYear(item, otherYear, baseYear)
+  const differs = otherRate !== shownRate
+  const nextInherits = item.rate_next_year == null // next year currently = current
+
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(item.name)
   const [unit, setUnit] = useState(item.unit)
-  const [rate, setRate] = useState(String(item.default_rate))
+  const [rate, setRate] = useState(String(shownRate))
   // Category picker: '' = none, an existing category, or NEW_CAT (+ type one).
   const [catSel, setCatSel] = useState(item.category ?? '')
   const [newCat, setNewCat] = useState('')
@@ -240,14 +322,32 @@ function PriceRow({
   async function save() {
     setSaving(true)
     setErr(null)
+    // Name / unit / category are shared across years; the rate maps to the year
+    // being edited — default_rate for the base year, rate_next_year for next.
     const patch: PriceItemPatch = {
       name: name.trim() || item.name,
       unit,
-      default_rate: Number(rate) || 0,
       category: resolveCategory(),
     }
+    if (viewingNext) patch.rate_next_year = Number(rate) || 0
+    else patch.default_rate = Number(rate) || 0
     try {
       await updatePriceItem(item.id, patch)
+      setEditing(false)
+      await onChanged()
+    } catch (e) {
+      setErr(errMsg(e))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Reset next year's rate to "same as current" (clears the override).
+  async function clearNextYear() {
+    setSaving(true)
+    setErr(null)
+    try {
+      await updatePriceItem(item.id, { rate_next_year: null })
       setEditing(false)
       await onChanged()
     } catch (e) {
@@ -269,7 +369,7 @@ function PriceRow({
   function startEditing() {
     setName(item.name)
     setUnit(item.unit)
-    setRate(String(item.default_rate))
+    setRate(String(shownRate))
     setCatSel(item.category ?? '')
     setNewCat('')
     setEditing(true)
@@ -279,11 +379,19 @@ function PriceRow({
     return (
       <div className={`line ${item.active ? '' : 'line-inactive'}`}>
         <div className="line-top">
-          <span className="line-desc">{item.name}{item.active ? '' : ' (inactive)'}</span>
-          <span className="num">{formatMoney(item.default_rate)}<span className="label"> /{item.unit}</span></span>
+          <span className="line-desc">
+            {item.name}{item.active ? '' : ' (inactive)'}
+            {viewingNext && nextInherits && <span className="label"> · same as {baseYear}</span>}
+          </span>
+          <span className="num">{formatMoney(shownRate)}<span className="label"> /{item.unit}</span></span>
         </div>
+        {differs && (
+          <div className="line-top">
+            <span className="label est-adj">↳ {otherYear}: {formatMoney(otherRate)}</span>
+          </div>
+        )}
         <div className="logcard-foot label">
-          <button type="button" className="btn-ghost" onClick={startEditing}>Edit</button>
+          <button type="button" className="btn-ghost" onClick={startEditing}>Edit {year}</button>
           <button type="button" className="btn-ghost" onClick={() => void toggleActive()}>
             {item.active ? 'Deactivate' : 'Reactivate'}
           </button>
@@ -319,7 +427,7 @@ function PriceRow({
       )}
       <div className="edit-grid">
         <label className="filter">
-          <span className="label">Rate</span>
+          <span className="label">{year} rate</span>
           <input type="number" inputMode="decimal" value={rate} onChange={(e) => setRate(e.target.value)} />
         </label>
         <label className="filter">
@@ -330,11 +438,19 @@ function PriceRow({
           </select>
         </label>
       </div>
+      {viewingNext && (
+        <p className="label">Editing {year} only — the {baseYear} rate ({formatMoney(rateForYear(item, baseYear, baseYear))}/{item.unit}) is unchanged.</p>
+      )}
       {err && <p className="error-text">{err}</p>}
       <div className="edit-actions">
         <button type="button" className="btn-primary" disabled={saving} onClick={() => void save()}>
-          {saving ? 'Saving…' : 'Save'}
+          {saving ? 'Saving…' : `Save ${year}`}
         </button>
+        {viewingNext && !nextInherits && (
+          <button type="button" className="btn-ghost" disabled={saving} onClick={() => void clearNextYear()}>
+            Reset to {baseYear}
+          </button>
+        )}
         <button type="button" className="btn-ghost" disabled={saving} onClick={() => setEditing(false)}>Cancel</button>
       </div>
     </div>

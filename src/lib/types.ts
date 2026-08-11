@@ -16,7 +16,8 @@ export interface PriceListItem {
   name: string
   category: string | null
   unit: string
-  default_rate: number
+  default_rate: number // the CURRENT (base-year) rate
+  rate_next_year: number | null // next year's rate; null = same as current
   active: boolean
   sort_order: number | null
 }

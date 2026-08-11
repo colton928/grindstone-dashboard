@@ -658,13 +658,14 @@ export async function addWorkType(
     category: r.category,
     unit: r.unit,
     default_rate: r.default_rate,
+    rate_next_year: null,
     active: true,
     sort_order: null,
   }
 }
 
 export type PriceItemPatch = Partial<
-  Pick<PriceListItem, 'name' | 'category' | 'unit' | 'default_rate' | 'active'>
+  Pick<PriceListItem, 'name' | 'category' | 'unit' | 'default_rate' | 'rate_next_year' | 'active'>
 >
 
 export async function updatePriceItem(id: string, patch: PriceItemPatch): Promise<void> {
@@ -673,6 +674,27 @@ export async function updatePriceItem(id: string, patch: PriceItemPatch): Promis
     .update({ ...patch, updated_at: new Date().toISOString() })
     .eq('id', id)
   if (error) throw error
+}
+
+// The current pricing year (settings.price_base_year). "Next year" is +1. Falls
+// back to the calendar year if the setting is somehow missing.
+export async function fetchPriceBaseYear(): Promise<number> {
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'price_base_year')
+    .maybeSingle()
+  if (error) throw error
+  const y = parseInt(data?.value ?? '', 10)
+  return Number.isFinite(y) ? y : new Date().getFullYear()
+}
+
+// Roll next-year pricing into current (see 08_pricing_year.sql). Returns the
+// number of products whose price moved forward.
+export async function promotePricingYear(): Promise<number> {
+  const { data, error } = await supabase.rpc('promote_pricing_year')
+  if (error) throw error
+  return (data as number) ?? 0
 }
 
 // Rename a whole category: move every price_list product in `oldCat` to `newCat`,
