@@ -16,6 +16,7 @@ import {
   updateDailyLogItem,
 } from '../lib/queries'
 import { formatDate, formatQty } from '../lib/progress'
+import { JobPicker } from '../components/JobPicker'
 import { logNeedsReview as needsReview } from '../lib/review'
 import type { Client, DailyLogFull, DailyLogItem, JobWithClient, PriceListItem } from '../lib/types'
 
@@ -84,11 +85,11 @@ export function DailyLog() {
   )
 
   // Jobs present in the data, for the job filter dropdown.
-  const jobOptions = useMemo(() => {
-    const m = new Map<string, string>()
-    for (const l of logs) if (l.job) m.set(l.job.id, l.job.name)
-    return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1]))
-  }, [logs])
+  // Jobs that actually appear in the logs — the set worth filtering by.
+  const loggedJobs = useMemo(() => {
+    const ids = new Set(logs.map((l) => l.job?.id).filter(Boolean) as string[])
+    return jobs.filter((j) => ids.has(j.id))
+  }, [logs, jobs])
 
   const reviewCount = useMemo(() => logs.filter(needsReview).length, [logs])
 
@@ -174,15 +175,16 @@ export function DailyLog() {
       )}
 
       <div className="filters">
-        <label className="filter">
+        <div className="filter">
           <span className="label">Job</span>
-          <select value={fJob} onChange={(e) => setFilter('job', e.target.value)}>
-            <option value="">All jobs</option>
-            {jobOptions.map(([id, name]) => (
-              <option key={id} value={id}>{name}</option>
-            ))}
-          </select>
-        </label>
+          <JobPicker
+            jobs={loggedJobs}
+            value={fJob}
+            onChange={(id) => setFilter('job', id)}
+            clearLabel="All jobs"
+            placeholder="All jobs — type to filter…"
+          />
+        </div>
         <label className="filter">
           <span className="label">Client</span>
           <select value={fClient} onChange={(e) => setFilter('client', e.target.value)}>
@@ -292,6 +294,9 @@ export function DailyLog() {
                 {move?.log.id === log.id && (
                   <MovePanel
                     jobs={jobs}
+                    clients={clients}
+                    onJobCreated={(j) => setJobs((prev) => [...prev, j])}
+                    onClientCreated={(c) => setClients((prev) => [...prev, c])}
                     currentJobId={log.job?.id ?? null}
                     label={
                       move.item
@@ -362,12 +367,18 @@ export function DailyLog() {
 // than the phase's original client (e.g. a repair billed to whoever broke it).
 function MovePanel({
   jobs,
+  clients,
+  onJobCreated,
+  onClientCreated,
   currentJobId,
   label,
   onConfirm,
   onCancel,
 }: {
   jobs: JobWithClient[]
+  clients: Client[]
+  onJobCreated: (job: JobWithClient) => void
+  onClientCreated: (client: Client) => void
   currentJobId: string | null
   label: string
   onConfirm: (jobId: string) => Promise<void>
@@ -376,11 +387,6 @@ function MovePanel({
   const [jobId, setJobId] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
-
-  const options = useMemo(
-    () => [...jobs].filter((j) => j.id !== currentJobId).sort((a, b) => a.name.localeCompare(b.name)),
-    [jobs, currentJobId],
-  )
 
   async function go() {
     if (!jobId) {
@@ -400,16 +406,18 @@ function MovePanel({
   return (
     <div className="move-panel">
       <span className="label">{label}</span>
-      <select value={jobId} onChange={(e) => setJobId(e.target.value)} disabled={busy}>
-        <option value="">— choose job —</option>
-        {options.map((j) => (
-          <option key={j.id} value={j.id}>
-            {j.name}
-            {j.client?.name ? ` — ${j.client.name}` : ''}
-            {j.status !== 'active' ? ` (${j.status})` : ''}
-          </option>
-        ))}
-      </select>
+      <JobPicker
+        jobs={jobs}
+        value={jobId}
+        onChange={setJobId}
+        excludeJobId={currentJobId}
+        disabled={busy}
+        allowCreate
+        clients={clients}
+        onJobCreated={onJobCreated}
+        onClientCreated={onClientCreated}
+        placeholder="Type to search jobs, or add a new one…"
+      />
       {err && <p className="error-text">{err}</p>}
       <div className="edit-actions">
         <button type="button" className="btn-primary" disabled={busy} onClick={() => void go()}>

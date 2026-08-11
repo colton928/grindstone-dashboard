@@ -4,13 +4,15 @@ import {
   createScheduleEvent,
   deleteScheduleEvent,
   fetchAllJobs,
+  fetchClients,
   fetchScheduleEvents,
   setScheduleEventStatus,
   updateScheduleEvent,
   type NewScheduleEvent,
 } from '../lib/queries'
 import { formatDate } from '../lib/progress'
-import type { JobWithClient, ScheduleEventFull, ScheduleKind } from '../lib/types'
+import { JobPicker } from '../components/JobPicker'
+import type { Client, JobWithClient, ScheduleEventFull, ScheduleKind } from '../lib/types'
 
 const KIND_LABEL: Record<ScheduleKind, string> = {
   job: 'Job',
@@ -48,6 +50,7 @@ function fmtTime(t: string | null): string {
 export function Schedule() {
   const [events, setEvents] = useState<ScheduleEventFull[]>([])
   const [jobs, setJobs] = useState<JobWithClient[]>([])
+  const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
@@ -58,9 +61,14 @@ export function Schedule() {
   async function load() {
     try {
       setLoading(true)
-      const [evData, jobData] = await Promise.all([fetchScheduleEvents(), fetchAllJobs()])
+      const [evData, jobData, clientData] = await Promise.all([
+        fetchScheduleEvents(),
+        fetchAllJobs(),
+        fetchClients(),
+      ])
       setEvents(evData)
       setJobs(jobData)
+      setClients(clientData)
       setError(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -127,6 +135,9 @@ export function Schedule() {
       {adding && (
         <EventForm
           jobs={jobs}
+          clients={clients}
+          onJobCreated={(j) => setJobs((prev) => [...prev, j])}
+          onClientCreated={(c) => setClients((prev) => [...prev, c])}
           onCancel={() => setAdding(false)}
           onSaved={async () => {
             setAdding(false)
@@ -182,6 +193,9 @@ export function Schedule() {
                   <EventForm
                     key={ev.id}
                     jobs={jobs}
+                    clients={clients}
+                    onJobCreated={(j) => setJobs((prev) => [...prev, j])}
+                    onClientCreated={(c) => setClients((prev) => [...prev, c])}
                     existing={ev}
                     onCancel={() => setEditingId(null)}
                     onSaved={async () => {
@@ -308,11 +322,17 @@ function EventCard({
 
 function EventForm({
   jobs,
+  clients,
+  onJobCreated,
+  onClientCreated,
   existing,
   onCancel,
   onSaved,
 }: {
   jobs: JobWithClient[]
+  clients: Client[]
+  onJobCreated: (job: JobWithClient) => void
+  onClientCreated: (client: Client) => void
   existing?: ScheduleEventFull
   onCancel: () => void
   onSaved: () => void | Promise<void>
@@ -390,17 +410,19 @@ function EventForm({
         </label>
       </div>
 
-      <label className="filter">
+      <div className="filter">
         <span className="label">Job (optional)</span>
-        <select value={jobId} onChange={(e) => setJobId(e.target.value)}>
-          <option value="">— no job —</option>
-          {jobs.map((j) => (
-            <option key={j.id} value={j.id}>
-              {j.name}{j.client?.name ? ` · ${j.client.name}` : ''}
-            </option>
-          ))}
-        </select>
-      </label>
+        <JobPicker
+          jobs={jobs}
+          value={jobId}
+          onChange={setJobId}
+          clearLabel="no job"
+          allowCreate
+          clients={clients}
+          onJobCreated={onJobCreated}
+          onClientCreated={onClientCreated}
+        />
+      </div>
 
       <label className="filter">
         <span className="label">Location (optional)</span>
