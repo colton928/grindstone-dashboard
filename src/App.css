@@ -597,6 +597,11 @@
   justify-content: space-between;
   align-items: flex-start;
   gap: 10px;
+  flex-wrap: wrap;
+}
+.logcard-head > div:first-child {
+  flex: 1 1 200px;
+  min-width: 0;
 }
 .logcard-date {
   font-family: var(--heading);
@@ -817,6 +822,12 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.logcard-head-actions .btn-ghost {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .tab-badge {
   display: inline-flex;
