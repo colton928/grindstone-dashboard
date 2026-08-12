@@ -354,7 +354,6 @@ let recentNames = JSON.parse(localStorage.getItem(KEY_RECENT) || '[]');
 let geoLat = null, geoLon = null;
 let WORK_TYPES = FALLBACK_TYPES, WORK_UNITS = Object.assign({}, FALLBACK_UNITS);
 let workItemCount = 3;
-const MAX_WORK_ITEMS = 8;
 
 // ══ HELPERS ══
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
@@ -446,13 +445,11 @@ function initWorkSel(n){
   };
 }
 function addWorkItem(){
-  if (workItemCount >= MAX_WORK_ITEMS) return;
   workItemCount++;
   const div = document.createElement('div');
   div.innerHTML = workItemHTML(workItemCount).trim();
   document.getElementById('work-items-container').appendChild(div.firstChild);
   initWorkSel(workItemCount);
-  if (workItemCount >= MAX_WORK_ITEMS) document.getElementById('add-work-btn').style.display = 'none';
 }
 function removeWorkItem(n){
   const el = document.getElementById('work-item-'+n); if (el) el.remove();
@@ -618,7 +615,7 @@ document.getElementById('daily-form').addEventListener('submit', async function(
   if (!job){ showError(STR.errJob); return; }
 
   const items = [];
-  for (let n=1; n<=MAX_WORK_ITEMS; n++){
+  for (let n=1; n<=workItemCount; n++){
     const sel = document.getElementById('work-type-'+n);
     if (!sel) continue;
     const qtyEl = document.getElementById('qty-'+n);
