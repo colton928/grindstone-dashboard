@@ -439,10 +439,14 @@ function JobBillingDetail({
             <button
               type="button"
               className="btn-primary"
-              disabled={!billing.hasUnbilled}
+              disabled={!billing.hasUnbilledQty}
               onClick={() => setCreating(true)}
             >
-              {billing.hasUnbilled ? `Create bill #${nextBill}` : 'Nothing to bill'}
+              {billing.hasUnbilledQty
+                ? billing.hasUnbilled
+                  ? `Create bill #${nextBill}`
+                  : `Create bill #${nextBill} (set price on the draft)`
+                : 'Nothing to bill'}
             </button>
           </div>
 
