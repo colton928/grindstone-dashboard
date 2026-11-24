@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { formatDate } from './progress'
 import type { EstimateFull, InvoiceFull } from './types'
+import { WEATHER_PROTECTION, isCoveringLine } from './billing'
 
 const money = (n: number) =>
   n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 })
@@ -43,9 +44,14 @@ export function buildInvoicePdf(
   doc.text(invoice.job?.client?.name ?? '—', pageW / 2, y)
   doc.setFont('helvetica', 'normal')
 
-  // Line-item table
-  const body = [...invoice.lines]
-    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+  // Line-item table (covering lines rolled into one Weather Protection line, last)
+  const lineAmt = (l: InvoiceFull['lines'][number]) =>
+    l.amount != null ? Number(l.amount) : Number(l.quantity) * Number(l.rate)
+  const sorted = [...invoice.lines].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+  const covering = sorted.filter((l) => isCoveringLine(l, productName))
+  const coveringTotal = covering.reduce((s, l) => s + lineAmt(l), 0)
+  const body = sorted
+    .filter((l) => !isCoveringLine(l, productName))
     .map((l) => {
       const amt = l.amount != null ? Number(l.amount) : Number(l.quantity) * Number(l.rate)
       const desc = l.description ?? (l.product_id ? productName.get(l.product_id) : null) ?? 'Work'
@@ -57,6 +63,9 @@ export function buildInvoicePdf(
         money(amt),
       ]
     })
+  if (covering.length) {
+    body.push([WEATHER_PROTECTION, 'LS', '1', money(coveringTotal), money(coveringTotal)])
+  }
 
   const total = invoice.lines.reduce(
     (s, l) => s + (l.amount != null ? Number(l.amount) : Number(l.quantity) * Number(l.rate)),

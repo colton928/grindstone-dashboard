@@ -138,6 +138,18 @@ export function coveringItems(loggedItems: LoggedLike[], priceList: PriceListIte
   return out
 }
 
+// Winter covering is worked out per item (LF / Sidewalk SF / Flatwork SF / EA) so
+// billing reconciles, but the printed bill shows it as ONE "Weather Protection"
+// line with the combined total (Colton's call, 2026-11-23).
+export const WEATHER_PROTECTION = 'Weather Protection'
+export function isCoveringLine(
+  l: { product_id: string | null; description?: string | null },
+  productName: Map<string, string>,
+): boolean {
+  const name = (l.product_id ? productName.get(l.product_id) : null) ?? l.description ?? ''
+  return /^winter covering/i.test(name)
+}
+
 export function computeJobBilling(
   loggedItems: LoggedLike[],
   invoiceLines: BilledLike[],

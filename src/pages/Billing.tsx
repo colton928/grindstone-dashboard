@@ -15,7 +15,7 @@ import {
   type NewInvoiceLine,
 } from '../lib/queries'
 import { LineItemPicker } from '../components/LineItemPicker'
-import { computeJobBilling, type JobBilling } from '../lib/billing'
+import { WEATHER_PROTECTION, computeJobBilling, isCoveringLine, type JobBilling } from '../lib/billing'
 import { formatDate, formatMoney, formatQty } from '../lib/progress'
 import type {
   InvoiceFull,
@@ -767,6 +767,16 @@ function DraftInvoiceEditor({
         <button type="button" className="btn-ghost" onClick={addLine}>+ Add line</button>
       </div>
 
+      {lines.some((l) => isCoveringLine(l, productName)) && (
+        <p className="muted">
+          Covering lines print as one “{WEATHER_PROTECTION}” line:{' '}
+          {formatMoney(
+            lines
+              .filter((l) => isCoveringLine(l, productName))
+              .reduce((s, l) => s + (Number(l.quantity) || 0) * (Number(l.rate) || 0), 0),
+          )}
+        </p>
+      )}
       <div className="bill-total-row">
         <span className="label">Invoice total</span>
         <span className="num bill-grand">{formatMoney(total)}</span>
