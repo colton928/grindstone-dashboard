@@ -100,17 +100,24 @@ export const COVERING_CATEGORY = 'Covering'
 const NOT_COVERED_CATEGORIES = new Set([COVERING_CATEGORY, 'Add-On', 'Fee', 'Sawcutting'])
 
 // For every line on a covered report, an extra logged line of the same quantity
-// on the "Winter Covering" item for its unit: LF → (LF), SF → (SF), anything
-// else (EA, repair sections, one-offs with no unit) → (EA). Derived at billing
-// time so editing a report or un-checking Covered updates the bill automatically.
+// on the "Winter Covering" item for its unit: LF → (LF); SF → "Sidewalk (SF)" for
+// Sidewalk-category work (5' walk takes two 6' blankets), otherwise the other SF
+// covering item (flatwork, drive approaches…); anything else (EA, repair sections,
+// one-offs with no unit) → (EA). Derived at billing time so editing a report or
+// un-checking Covered updates the bill automatically.
 export function coveringItems(loggedItems: LoggedLike[], priceList: PriceListItem[]): LoggedLike[] {
   const coverByUnit = new Map<string, PriceListItem>()
+  let coverSidewalk: PriceListItem | undefined
   for (const p of priceList) {
-    if (p.category === COVERING_CATEGORY && !coverByUnit.has(p.unit.toUpperCase())) {
-      coverByUnit.set(p.unit.toUpperCase(), p)
+    if (p.category !== COVERING_CATEGORY) continue
+    const u = p.unit.toUpperCase()
+    if (u === 'SF' && /sidewalk/i.test(p.name)) {
+      coverSidewalk ??= p
+    } else if (!coverByUnit.has(u)) {
+      coverByUnit.set(u, p)
     }
   }
-  if (!coverByUnit.size) return []
+  if (!coverByUnit.size && !coverSidewalk) return []
   const byId = new Map(priceList.map((p) => [p.id, p]))
   const out: LoggedLike[] = []
   for (const it of loggedItems) {
@@ -119,7 +126,12 @@ export function coveringItems(loggedItems: LoggedLike[], priceList: PriceListIte
     if (prod && NOT_COVERED_CATEGORIES.has(prod.category ?? '')) continue
     const u = (prod?.unit ?? it.unit ?? '').toUpperCase()
     if (u === 'CY') continue // concrete by the yard isn't covered work
-    const cover = coverByUnit.get(u === 'LF' || u === 'SF' ? u : 'EA')
+    const cover =
+      u === 'SF'
+        ? (prod?.category === 'Sidewalk' ? coverSidewalk : undefined) ??
+          coverByUnit.get('SF') ??
+          coverSidewalk
+        : coverByUnit.get(u === 'LF' ? 'LF' : 'EA')
     if (!cover) continue
     out.push({ product_id: cover.id, quantity: Number(it.quantity), unit: cover.unit })
   }
