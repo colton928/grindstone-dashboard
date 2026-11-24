@@ -150,7 +150,13 @@ export async function fetchAllDailyLogs(): Promise<DailyLogFull[]> {
 export type DailyLogPatch = Partial<
   Pick<
     DailyLog,
-    'log_date' | 'submitted_by' | 'concrete_yards' | 'notes' | 'issues_delays' | 'ready_to_bill'
+    | 'log_date'
+    | 'submitted_by'
+    | 'concrete_yards'
+    | 'notes'
+    | 'issues_delays'
+    | 'ready_to_bill'
+    | 'covered'
   >
 >
 
@@ -263,7 +269,14 @@ export async function deleteDailyLogItem(id: string): Promise<void> {
 
 export interface BillingRawData {
   jobs: JobWithClient[]
-  logged: { job_id: string; product_id: string | null; description: string | null; quantity: number }[]
+  logged: {
+    job_id: string
+    product_id: string | null
+    description: string | null
+    unit: string | null
+    quantity: number
+    covered: boolean
+  }[]
   billed: { job_id: string; product_id: string | null; description: string | null; quantity: number; rate: number; amount: number | null }[]
   estRates: { job_id: string; product_id: string | null; description: string | null; rate: number }[]
 }
@@ -272,7 +285,9 @@ export interface BillingRawData {
 export async function fetchBillingData(): Promise<BillingRawData> {
   const [jobsRes, loggedRes, billedRes, estRes] = await Promise.all([
     supabase.from('jobs').select('*, client:clients(id, name)').order('name'),
-    supabase.from('daily_log_items').select('product_id, description, quantity, daily_logs!inner(job_id)'),
+    supabase
+      .from('daily_log_items')
+      .select('product_id, description, unit, quantity, daily_logs!inner(job_id, covered)'),
     supabase
       .from('invoice_line_items')
       .select('product_id, description, quantity, rate, amount, invoices!inner(job_id)'),
@@ -288,7 +303,9 @@ export async function fetchBillingData(): Promise<BillingRawData> {
     job_id: r.daily_logs.job_id as string,
     product_id: r.product_id,
     description: r.description ?? null,
+    unit: r.unit ?? null,
     quantity: Number(r.quantity),
+    covered: !!r.daily_logs.covered,
   }))
   const billed = (billedRes.data ?? []).map((r: any) => ({
     job_id: r.invoices.job_id as string,

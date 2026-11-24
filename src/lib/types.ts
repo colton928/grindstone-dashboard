@@ -85,6 +85,7 @@ export interface DailyLog {
   notes: string | null
   issues_delays: string | null
   ready_to_bill: boolean
+  covered: boolean // winter covering: every line on this report was covered (billed as add-on lines)
   reviewed_at: string | null // null = not yet reviewed (flags if it has a note/issue)
   created_at?: string
 }

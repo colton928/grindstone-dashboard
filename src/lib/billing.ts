@@ -7,6 +7,7 @@ export type LoggedLike = {
   quantity: number
   description?: string | null
   unit?: string | null
+  covered?: boolean // line is on a daily report marked Covered (winter blankets)
 }
 export type BilledLike = {
   product_id: string | null
@@ -92,6 +93,39 @@ export function buildEstimateRateMap(lines: EstRateLike[]): Map<string, number> 
   return m
 }
 
+// Winter covering: price-list items in this category are add-ons billed per unit
+// of covered work. Categories that are themselves add-ons/fees/cutting never get
+// covered (covering Shading would double-count the flatwork under it).
+export const COVERING_CATEGORY = 'Covering'
+const NOT_COVERED_CATEGORIES = new Set([COVERING_CATEGORY, 'Add-On', 'Fee', 'Sawcutting'])
+
+// For every line on a covered report, an extra logged line of the same quantity
+// on the "Winter Covering" item for its unit: LF → (LF), SF → (SF), anything
+// else (EA, repair sections, one-offs with no unit) → (EA). Derived at billing
+// time so editing a report or un-checking Covered updates the bill automatically.
+export function coveringItems(loggedItems: LoggedLike[], priceList: PriceListItem[]): LoggedLike[] {
+  const coverByUnit = new Map<string, PriceListItem>()
+  for (const p of priceList) {
+    if (p.category === COVERING_CATEGORY && !coverByUnit.has(p.unit.toUpperCase())) {
+      coverByUnit.set(p.unit.toUpperCase(), p)
+    }
+  }
+  if (!coverByUnit.size) return []
+  const byId = new Map(priceList.map((p) => [p.id, p]))
+  const out: LoggedLike[] = []
+  for (const it of loggedItems) {
+    if (!it.covered || !(Number(it.quantity) > 0)) continue
+    const prod = it.product_id ? byId.get(it.product_id) : undefined
+    if (prod && NOT_COVERED_CATEGORIES.has(prod.category ?? '')) continue
+    const u = (prod?.unit ?? it.unit ?? '').toUpperCase()
+    if (u === 'CY') continue // concrete by the yard isn't covered work
+    const cover = coverByUnit.get(u === 'LF' || u === 'SF' ? u : 'EA')
+    if (!cover) continue
+    out.push({ product_id: cover.id, quantity: Number(it.quantity), unit: cover.unit })
+  }
+  return out
+}
+
 export function computeJobBilling(
   loggedItems: LoggedLike[],
   invoiceLines: BilledLike[],
@@ -105,7 +139,8 @@ export function computeJobBilling(
   const resolve = <T extends { product_id: string | null; description?: string | null }>(
     arr: T[],
   ): T[] => arr.map((x) => ({ ...x, product_id: resolveProductId(x.product_id, x.description, nameToProduct) }))
-  const loggedR = resolve(loggedItems)
+  const loggedR0 = resolve(loggedItems)
+  const loggedR = [...loggedR0, ...coveringItems(loggedR0, priceList)]
   const invoiceR = resolve(invoiceLines)
   const estimateR = resolve(estimateLines)
 

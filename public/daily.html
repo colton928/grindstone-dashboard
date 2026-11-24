@@ -222,6 +222,16 @@
 
       <div class="card">
         <div class="card-title" id="t-materials">Materials</div>
+        <div class="bill-toggle" style="margin-bottom:14px">
+          <label class="toggle-switch" for="covered">
+            <input type="checkbox" id="covered" name="covered">
+            <span class="toggle-slider"></span>
+          </label>
+          <div>
+            <div class="toggle-label" id="t-covered">Covered</div>
+            <div class="toggle-sub" id="t-covered-sub">All of today's work was covered (blankets)</div>
+          </div>
+        </div>
         <div class="field">
           <label for="concrete-yards" id="t-concrete">Concrete Ordered (yards)</label>
           <input type="number" id="concrete-yards" name="concreteYards" placeholder="0" min="0" step="0.5">
@@ -294,6 +304,7 @@ const STR = {
     selectType:'Select work type...', oneoff:'✎ One-off / other…', oneoffPh:'Describe the work',
     addWork:'+ Add Work Type', newType:'+ New work type', createType:'Create work type',
     materials:'Materials', concrete:'Concrete Ordered (yards)', notes:'Notes',
+    covered:'Covered', coveredSub:"All of today's work was covered (blankets)",
     extra:'Extra Work / Additional Info', issues:'Issues / Delays', billing:'Billing',
     ready:'Ready to Bill', readySub:'Mark this job phase as billable',
     submit:'Submit Report', submitting:'Submitting...', success:'Report Submitted!',
@@ -312,6 +323,7 @@ const STR = {
     selectType:'Seleccionar tipo...', oneoff:'✎ Otro / especial…', oneoffPh:'Describe el trabajo',
     addWork:'+ Agregar Tipo', newType:'+ Nuevo tipo', createType:'Crear tipo',
     materials:'Materiales', concrete:'Concreto Pedido (yardas)', notes:'Notas',
+    covered:'Cubierto', coveredSub:'Todo el trabajo de hoy se cubrió (cobijas)',
     extra:'Trabajo Extra / Info Adicional', issues:'Problemas / Retrasos', billing:'Facturación',
     ready:'Listo para Facturar', readySub:'Marcar esta fase como facturable',
     submit:'Enviar Reporte', submitting:'Enviando...', success:'¡Reporte Enviado!',
@@ -379,6 +391,7 @@ function applyStrings(){
   set('t-work-today', STR.workToday); set('t-materials', STR.materials); set('t-concrete', STR.concrete);
   set('t-notes', STR.notes); set('t-extra', STR.extra); set('t-issues', STR.issues);
   set('t-billing', STR.billing); set('t-ready', STR.ready); set('t-ready-sub', STR.readySub);
+  set('t-covered', STR.covered); set('t-covered-sub', STR.coveredSub);
   set('t-success', STR.success); set('t-another', STR.another);
   document.getElementById('save-job-btn').textContent = STR.saveJob;
   document.getElementById('submit-btn').textContent = STR.submit;
@@ -488,6 +501,8 @@ async function loadWorkTypes(){
       const byCat = {};
       const units = {};
       rows.forEach(r => {
+        // Covering items are billed from the "Covered" toggle, not picked by hand.
+        if (r.category === 'Covering') return;
         const g = r.category || 'Other';
         if (!byCat[g]){ byCat[g] = { g, items:[] }; groups.push(byCat[g]); }
         byCat[g].items.push(r.name);
@@ -641,6 +656,7 @@ document.getElementById('daily-form').addEventListener('submit', async function(
     notes: document.getElementById('extra-notes').value || null,
     issues_delays: document.getElementById('issues-delays').value || null,
     ready_to_bill: document.getElementById('ready-to-bill').checked,
+    covered: document.getElementById('covered').checked,
     items: items
   };
 

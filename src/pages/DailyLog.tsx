@@ -357,8 +357,9 @@ export function DailyLog() {
                   )}
                 </div>
 
-                {(log.concrete_yards != null || log.ready_to_bill || log.notes || log.issues_delays) && (
+                {(log.concrete_yards != null || log.covered || log.ready_to_bill || log.notes || log.issues_delays) && (
                   <div className="logcard-foot label">
+                    {log.covered && <span className="pill">Covered</span>}
                     {log.concrete_yards != null && <span>{formatQty(Number(log.concrete_yards))} yd³ concrete</span>}
                     {log.ready_to_bill && <span className="pill pill-warn">Ready to bill</span>}
                     {log.notes && <span className="lognote">📝 {log.notes}</span>}
@@ -469,6 +470,7 @@ function LogEditor({
   const [submittedBy, setSubmittedBy] = useState(log.submitted_by ?? '')
   const [yards, setYards] = useState(log.concrete_yards != null ? String(log.concrete_yards) : '')
   const [readyToBill, setReadyToBill] = useState(log.ready_to_bill)
+  const [covered, setCovered] = useState(!!log.covered)
   const [notes, setNotes] = useState(log.notes ?? '')
   const [issues, setIssues] = useState(log.issues_delays ?? '')
   const [items, setItems] = useState<DraftItem[]>(
@@ -540,6 +542,7 @@ function LogEditor({
         notes: notes || null,
         issues_delays: issues || null,
         ready_to_bill: readyToBill,
+        covered,
       })
 
       for (const id of removedIds) await deleteDailyLogItem(id)
@@ -591,6 +594,10 @@ function LogEditor({
         <label className="filter">
           <span className="label">Submitted by</span>
           <input type="text" value={submittedBy} onChange={(e) => setSubmittedBy(e.target.value)} />
+        </label>
+        <label className="filter filter-check">
+          <input type="checkbox" checked={covered} onChange={(e) => setCovered(e.target.checked)} />
+          <span className="label">Covered</span>
         </label>
         <label className="filter">
           <span className="label">Concrete (yd³)</span>
